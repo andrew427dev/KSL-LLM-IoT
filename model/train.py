@@ -17,31 +17,40 @@ from sklearn.preprocessing import LabelEncoder
 from config.settings import KSL_LABELS, SEQUENCE_LENGTH, INPUT_SHAPE
 
 
-def load_dataset(landmarks_dir="data/landmarks"):
+def load_dataset(landmarks_dir="data/landmarks", augmented_dir="data/augmented"):
     """
-    data/landmarks/ 디렉토리에서 CSV 파일을 로드합니다.
-    파일명 형식: {word}_{index}.csv
+    data/landmarks/ (원본) + data/augmented/ (증강) 에서 CSV를 로드합니다.
+    augmented_dir 가 없거나 비어 있으면 원본만 사용합니다.
     각 CSV: 30행(프레임) × 63열(랜드마크)
     """
     X, y = [], []
 
-    for label in KSL_LABELS:
-        label_dir = os.path.join(landmarks_dir, label)
-        if not os.path.exists(label_dir):
-            print(f"[Train] Warning: No data found for '{label}'")
-            continue
+    dirs_to_load = [landmarks_dir]
+    if augmented_dir and os.path.exists(augmented_dir):
+        dirs_to_load.append(augmented_dir)
 
-        for fname in os.listdir(label_dir):
-            if not fname.endswith(".csv"):
+    for src_dir in dirs_to_load:
+        for label in KSL_LABELS:
+            label_dir = os.path.join(src_dir, label)
+            if not os.path.exists(label_dir):
                 continue
-            path = os.path.join(label_dir, fname)
-            try:
-                seq = np.loadtxt(path, delimiter=",")
-                if seq.shape == (SEQUENCE_LENGTH, 63):
-                    X.append(seq)
-                    y.append(label)
-            except Exception as e:
-                print(f"[Train] Skip {fname}: {e}")
+
+            for fname in os.listdir(label_dir):
+                if not fname.endswith(".csv"):
+                    continue
+                path = os.path.join(label_dir, fname)
+                try:
+                    seq = np.loadtxt(path, delimiter=",")
+                    if seq.shape == (SEQUENCE_LENGTH, 63):
+                        X.append(seq)
+                        y.append(label)
+                except Exception as e:
+                    print(f"[Train] Skip {fname}: {e}")
+
+    # 원본 경고는 landmarks_dir 기준으로만 출력
+    for label in KSL_LABELS:
+        if not os.path.exists(os.path.join(landmarks_dir, label)):
+            print(f"[Train] Warning: No data found for '{label}'")
 
     return np.array(X, dtype=np.float32), np.array(y)
 

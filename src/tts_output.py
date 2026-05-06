@@ -13,6 +13,7 @@ from config.settings import TTS_LANGUAGE, TTS_OFFLINE_MODE
 class TTSOutput:
     def __init__(self):
         self._lock = threading.Lock()
+        self._pygame_initialized = False
 
         if TTS_OFFLINE_MODE:
             self._init_offline()
@@ -42,10 +43,13 @@ class TTSOutput:
             from gtts import gTTS
             import pygame
 
+            if not self._pygame_initialized:
+                pygame.mixer.init()
+                self._pygame_initialized = True
+
             tts = gTTS(text=text, lang=TTS_LANGUAGE)
             tts.save("/tmp/ksl_output.mp3")
 
-            pygame.mixer.init()
             pygame.mixer.music.load("/tmp/ksl_output.mp3")
             pygame.mixer.music.play()
             while pygame.mixer.music.get_busy():

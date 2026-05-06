@@ -1,0 +1,26 @@
+# ── Raspberry Pi 배포 전용 ───────────────────────────────
+# PC 훈련 환경: requirements.txt
+# RPi 설치: pip install -r requirements-rpi.txt
+
+# Core CV
+mediapipe>=0.10.0
+opencv-python>=4.8.0
+
+# ML (추론 전용 — tensorflow 대신 경량 런타임)
+tflite-runtime>=2.13.0
+numpy>=1.24.0
+
+# Gemini API
+google-generativeai>=0.5.0
+
+# TTS
+gTTS>=2.3.0
+pyttsx3>=2.90
+pygame>=2.5.0
+
+# Hardware (Raspberry Pi 전용)
+RPi.GPIO>=0.7.1
+smbus2>=0.4.2
+
+# Utilities
+python-dotenv>=1.0.0

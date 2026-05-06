@@ -15,7 +15,7 @@ import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from src.hand_tracker import HandTracker
-from config.settings import KSL_LABELS, SEQUENCE_LENGTH
+from config.settings import KSL_LABELS, SEQUENCE_LENGTH, CAMERA_INDEX
 
 
 def collect(word, num_samples, output_dir="data/landmarks"):
@@ -30,7 +30,7 @@ def collect(word, num_samples, output_dir="data/landmarks"):
     print(f"[Collect] Word: '{word}' | Existing: {existing} | Target: {num_samples}")
 
     tracker = HandTracker()
-    cap = cv2.VideoCapture(0)
+    cap = cv2.VideoCapture(CAMERA_INDEX)
 
     sample_count = existing
     sequence_buffer = []

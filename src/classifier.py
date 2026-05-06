@@ -72,5 +72,6 @@ class KSLClassifier:
 
         self._last_word = label
         self._last_word_time = now
+        self.sequence_buffer.clear()
 
         return label, confidence

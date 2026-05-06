@@ -1,0 +1,158 @@
+"""
+generate_wiring_diagram.py
+KSL-LLM-IoT 하드웨어 배선도를 생성합니다.
+출력: docs/wiring_diagram.png
+
+Usage:
+    python docs/generate_wiring_diagram.py
+"""
+
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import matplotlib.patches as mpatches
+from matplotlib.patches import FancyBboxPatch, FancyArrowPatch
+import os
+
+OUTPUT_PATH = os.path.join(os.path.dirname(__file__), "wiring_diagram.png")
+
+# ── 색상 팔레트 ─────────────────────────────────────────
+C_RPI    = "#c0392b"   # Raspberry Pi — 빨강
+C_LCD    = "#2980b9"   # LCD — 파랑
+C_BUZZ   = "#27ae60"   # 부저 — 초록
+C_CAM    = "#8e44ad"   # 카메라 — 보라
+C_SPK    = "#e67e22"   # 스피커 — 주황
+C_WIRE_5V  = "#e74c3c" # 5V 선
+C_WIRE_GND = "#2c3e50" # GND 선
+C_WIRE_SIG = "#f39c12" # 신호 선
+C_WIRE_I2C = "#3498db" # I2C 선
+C_BG     = "#fafafa"
+
+
+def draw_box(ax, x, y, w, h, label, color, fontsize=10, text_color="white"):
+    box = FancyBboxPatch((x, y), w, h,
+                         boxstyle="round,pad=0.05",
+                         facecolor=color, edgecolor="white",
+                         linewidth=1.5, zorder=3)
+    ax.add_patch(box)
+    ax.text(x + w / 2, y + h / 2, label,
+            ha='center', va='center', fontsize=fontsize,
+            color=text_color, fontweight='bold', zorder=4)
+
+
+def draw_wire(ax, x1, y1, x2, y2, color, label="", lw=2):
+    ax.annotate("", xy=(x2, y2), xytext=(x1, y1),
+                arrowprops=dict(arrowstyle="-", color=color,
+                                lw=lw, connectionstyle="arc3,rad=0.0"),
+                zorder=2)
+    if label:
+        mx, my = (x1 + x2) / 2, (y1 + y2) / 2
+        ax.text(mx, my, label, fontsize=7, color=color,
+                ha='center', va='bottom', zorder=5,
+                bbox=dict(boxstyle='round,pad=0.1', fc='white', ec='none', alpha=0.8))
+
+
+def main():
+    fig, ax = plt.subplots(figsize=(14, 9))
+    fig.patch.set_facecolor(C_BG)
+    ax.set_facecolor(C_BG)
+    ax.set_xlim(0, 14)
+    ax.set_ylim(0, 9)
+    ax.axis('off')
+    ax.set_title("KSL-LLM-IoT  Hardware Wiring Diagram\n"
+                 "Raspberry Pi 4B — I2C LCD 20×4 — Pi Camera v2 — Buzzer — USB Speaker",
+                 fontsize=13, fontweight='bold', pad=14, color='#2c3e50')
+
+    # ── Raspberry Pi 4B (중앙) ───────────────────────────
+    rpi_x, rpi_y, rpi_w, rpi_h = 4.8, 3.2, 4.4, 3.0
+    draw_box(ax, rpi_x, rpi_y, rpi_w, rpi_h, "Raspberry Pi 4B", C_RPI, fontsize=12)
+
+    # 핀 레이블 (RPi 내부)
+    pins = [
+        ("GPIO 2 (SDA)", rpi_x + 0.15, rpi_y + 2.3),
+        ("GPIO 3 (SCL)", rpi_x + 0.15, rpi_y + 1.9),
+        ("GPIO 17",      rpi_x + 0.15, rpi_y + 1.5),
+        ("5V  (Pin 2)",  rpi_x + 0.15, rpi_y + 2.7),
+        ("GND (Pin 6)",  rpi_x + 0.15, rpi_y + 1.1),
+        ("CSI Port",     rpi_x + rpi_w/2 - 0.4, rpi_y + 0.2),
+        ("USB Port",     rpi_x + rpi_w - 1.2, rpi_y + 2.5),
+    ]
+    for text, px, py in pins:
+        ax.text(px, py, f"• {text}", fontsize=7.5, color='white', zorder=5)
+
+    # ── I2C LCD 20x4 (왼쪽) ─────────────────────────────
+    lcd_x, lcd_y = 0.5, 4.5
+    draw_box(ax, lcd_x, lcd_y, 3.0, 1.8, "I2C LCD 20×4\n(0x27)", C_LCD, fontsize=10)
+    ax.text(lcd_x + 0.2, lcd_y + 1.2, "VCC  SDA  SCL  GND",
+            fontsize=7, color='white', zorder=5)
+
+    # LCD 배선
+    draw_wire(ax, lcd_x + 3.0, lcd_y + 1.5, rpi_x, rpi_y + 2.7,
+              C_WIRE_5V, "5V")
+    draw_wire(ax, lcd_x + 3.0, lcd_y + 1.2, rpi_x, rpi_y + 2.3,
+              C_WIRE_I2C, "SDA")
+    draw_wire(ax, lcd_x + 3.0, lcd_y + 0.9, rpi_x, rpi_y + 1.9,
+              C_WIRE_I2C, "SCL")
+    draw_wire(ax, lcd_x + 3.0, lcd_y + 0.5, rpi_x, rpi_y + 1.1,
+              C_WIRE_GND, "GND")
+
+    # ── 능동 부저 (왼쪽 하단) ───────────────────────────
+    bz_x, bz_y = 0.5, 1.8
+    draw_box(ax, bz_x, bz_y, 3.0, 1.2, "Active Buzzer\n(GPIO 17)", C_BUZZ, fontsize=10)
+    ax.text(bz_x + 0.2, bz_y + 0.6, "+  (Signal)      –  (GND)",
+            fontsize=7, color='white', zorder=5)
+
+    draw_wire(ax, bz_x + 3.0, bz_y + 0.9, rpi_x, rpi_y + 1.5,
+              C_WIRE_SIG, "GPIO 17")
+    draw_wire(ax, bz_x + 3.0, bz_y + 0.3, rpi_x, rpi_y + 1.1,
+              C_WIRE_GND, "GND")
+
+    # ── Pi Camera v2 (상단) ──────────────────────────────
+    cam_x, cam_y = 5.3, 7.2
+    draw_box(ax, cam_x, cam_y, 3.4, 1.2, "Pi Camera Module v2\n(CSI Ribbon Cable)", C_CAM, fontsize=10)
+    draw_wire(ax, cam_x + 1.7, cam_y, rpi_x + rpi_w / 2, rpi_y + rpi_h,
+              C_WIRE_SIG, "CSI")
+
+    # ── USB Speaker (오른쪽) ─────────────────────────────
+    spk_x, spk_y = 10.2, 4.5
+    draw_box(ax, spk_x, spk_y, 3.0, 1.4, "USB Speaker\n(or 3.5mm Audio)", C_SPK, fontsize=10)
+    draw_wire(ax, spk_x, spk_y + 0.7, rpi_x + rpi_w, rpi_y + 2.5,
+              C_WIRE_SIG, "USB")
+
+    # ── 범례 ────────────────────────────────────────────
+    legend_items = [
+        mpatches.Patch(color=C_WIRE_5V,  label="5V Power"),
+        mpatches.Patch(color=C_WIRE_GND, label="GND"),
+        mpatches.Patch(color=C_WIRE_I2C, label="I2C (SDA/SCL)"),
+        mpatches.Patch(color=C_WIRE_SIG, label="Signal / Data"),
+    ]
+    ax.legend(handles=legend_items, loc='lower right',
+              fontsize=9, framealpha=0.9, title="Wire Colors", title_fontsize=9)
+
+    # ── GPIO 요약 표 ─────────────────────────────────────
+    table_x, table_y = 9.8, 1.0
+    ax.text(table_x, table_y + 1.6, "GPIO Pin Summary",
+            fontsize=9, fontweight='bold', color='#2c3e50')
+    rows = [
+        ("GPIO 2 (SDA)", "I2C LCD — Data"),
+        ("GPIO 3 (SCL)", "I2C LCD — Clock"),
+        ("GPIO 17",      "Buzzer (+)"),
+        ("5V  Pin 2",    "LCD VCC"),
+        ("GND Pin 6",    "LCD GND / Buzzer (–)"),
+        ("CSI Port",     "Pi Camera v2"),
+        ("USB Port",     "Speaker / Webcam"),
+    ]
+    for i, (pin, desc) in enumerate(rows):
+        y_pos = table_y + 1.3 - i * 0.22
+        ax.text(table_x, y_pos, f"{pin:<18} {desc}", fontsize=7.5,
+                color='#2c3e50', family='monospace')
+
+    plt.tight_layout()
+    plt.savefig(OUTPUT_PATH, dpi=150, bbox_inches='tight',
+                facecolor=C_BG, edgecolor='none')
+    plt.close()
+    print(f"[Wiring Diagram] Saved: {OUTPUT_PATH}")
+
+
+if __name__ == "__main__":
+    main()
