@@ -8,13 +8,23 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.classifier import KSLClassifier
 from config.settings import SEQUENCE_LENGTH
+
+MODEL_PATH = os.environ.get("MODEL_PATH", "model/ksl_model.tflite")
+MODEL_AVAILABLE = os.path.exists(MODEL_PATH)
+
+
+def _make_classifier():
+    from src.classifier import KSLClassifier
+    return KSLClassifier()
 
 
 def test_buffer_fills():
     """30프레임 미만에서는 예측하지 않아야 한다."""
-    clf = KSLClassifier()
+    if not MODEL_AVAILABLE:
+        print("[SKIP] test_buffer_fills — model not found")
+        return
+    clf = _make_classifier()
     for _ in range(SEQUENCE_LENGTH - 1):
         clf.add_frame(np.zeros(63, dtype=np.float32))
     result = clf.predict()
@@ -24,19 +34,22 @@ def test_buffer_fills():
 
 def test_none_frame():
     """None 랜드마크는 버퍼에 추가되지 않아야 한다."""
-    clf = KSLClassifier()
+    if not MODEL_AVAILABLE:
+        print("[SKIP] test_none_frame — model not found")
+        return
+    clf = _make_classifier()
     clf.add_frame(None)
     assert len(clf.sequence_buffer) == 0
     print("[PASS] test_none_frame")
 
 
 def test_full_pipeline():
-    """30프레임을 채우면 predict()가 None이 아닌 값을 반환해야 한다."""
-    if not os.path.exists("model/ksl_model.tflite"):
+    """30프레임을 채우면 predict()가 오류 없이 실행되어야 한다."""
+    if not MODEL_AVAILABLE:
         print("[SKIP] test_full_pipeline — model not found")
         return
 
-    clf = KSLClassifier()
+    clf = _make_classifier()
     dummy = np.random.rand(63).astype(np.float32)
     for _ in range(SEQUENCE_LENGTH):
         clf.add_frame(dummy)
@@ -46,8 +59,25 @@ def test_full_pipeline():
     print(f"[PASS] test_full_pipeline — result: {result}")
 
 
+def test_buffer_cleared_after_recognition():
+    """인식 확정 후 시퀀스 버퍼가 초기화되어야 한다."""
+    if not MODEL_AVAILABLE:
+        print("[SKIP] test_buffer_cleared_after_recognition — model not found")
+        return
+
+    clf = _make_classifier()
+    dummy = np.random.rand(63).astype(np.float32)
+    for _ in range(SEQUENCE_LENGTH):
+        clf.add_frame(dummy)
+
+    clf.predict()
+    assert len(clf.sequence_buffer) == 0, "Buffer should be cleared after prediction"
+    print("[PASS] test_buffer_cleared_after_recognition")
+
+
 if __name__ == "__main__":
     test_buffer_fills()
     test_none_frame()
     test_full_pipeline()
-    print("\nAll tests passed.")
+    test_buffer_cleared_after_recognition()
+    print("\nAll tests done.")

@@ -62,7 +62,7 @@ TTS_LANGUAGE = os.getenv("TTS_LANGUAGE", "ko")
 TTS_OFFLINE_MODE = os.getenv("TTS_OFFLINE_MODE", "false").lower() == "true"
 
 # ── Camera ──────────────────────────────────────────────
-CAMERA_INDEX = 0
-CAMERA_WIDTH = 640
-CAMERA_HEIGHT = 480
-CAMERA_FPS = 30
+CAMERA_INDEX = int(os.getenv("CAMERA_INDEX", 0))
+CAMERA_WIDTH = int(os.getenv("CAMERA_WIDTH", 640))
+CAMERA_HEIGHT = int(os.getenv("CAMERA_HEIGHT", 480))
+CAMERA_FPS = int(os.getenv("CAMERA_FPS", 30))

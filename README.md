@@ -104,7 +104,23 @@ cp .env.example .env
 # Edit .env and add your Gemini API key
 ```
 
-### 5. Run the system
+### 5. Collect data (Week 2)
+```bash
+python collect_data.py --word 안녕 --samples 100
+```
+
+### 6. Augment dataset (Week 3)
+```bash
+# data/landmarks/ → data/augmented/ (원본 1개당 증강 3개 생성)
+python model/augment.py --factor 3
+```
+
+### 7. Train model (Week 3)
+```bash
+python model/train.py
+```
+
+### 8. Run the system
 ```bash
 python src/main.py
 ```

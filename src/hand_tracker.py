@@ -18,6 +18,7 @@ class HandTracker:
             min_detection_confidence=detection_confidence,
             min_tracking_confidence=tracking_confidence
         )
+        self._last_result = None  # extract_landmarks의 최신 결과 캐시
 
     def extract_landmarks(self, frame):
         """
@@ -28,12 +29,12 @@ class HandTracker:
             None — 손이 감지되지 않은 경우
         """
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        result = self.hands.process(rgb)
+        self._last_result = self.hands.process(rgb)
 
-        if not result.multi_hand_landmarks:
+        if not self._last_result.multi_hand_landmarks:
             return None
 
-        hand = result.multi_hand_landmarks[0]
+        hand = self._last_result.multi_hand_landmarks[0]
         landmarks = []
 
         # 손목(0번) 기준 상대 좌표 정규화
@@ -47,12 +48,10 @@ class HandTracker:
 
         return np.array(landmarks, dtype=np.float32)
 
-    def draw_landmarks(self, frame, landmarks_result=None):
-        """디버깅용 랜드마크 시각화."""
-        rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        result = self.hands.process(rgb)
-        if result.multi_hand_landmarks:
-            for hand in result.multi_hand_landmarks:
+    def draw_landmarks(self, frame):
+        """extract_landmarks()의 캐시 결과로 랜드마크를 시각화 (이중 처리 없음)."""
+        if self._last_result and self._last_result.multi_hand_landmarks:
+            for hand in self._last_result.multi_hand_landmarks:
                 self.mp_draw.draw_landmarks(
                     frame, hand, self.mp_hands.HAND_CONNECTIONS
                 )

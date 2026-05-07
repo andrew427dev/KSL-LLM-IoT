@@ -9,6 +9,7 @@ __pycache__/
 *.tflite
 *.h5
 *.pb
+*.keras
 
 # Raw data (privacy)
 data/raw/
