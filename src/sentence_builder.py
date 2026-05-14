@@ -23,12 +23,23 @@ from config.settings import (
 
 class SentenceBuilder:
     def __init__(self):
-        self._client = genai.Client(api_key=GEMINI_API_KEY)
-        self._gen_config = types.GenerateContentConfig(
-            system_instruction=GEMINI_SYSTEM_PROMPT,
-            max_output_tokens=GEMINI_MAX_TOKENS,
-            temperature=0.3,
-        )
+        # GEMINI_API_KEY가 비어있으면 오프라인 모드로 동작. 단어들을
+        # 공백으로 이어 붙여 fallback 문장을 만든다. API 키가 있으면
+        # 정상 LLM 경로.
+        if GEMINI_API_KEY:
+            self._client = genai.Client(api_key=GEMINI_API_KEY)
+            self._gen_config = types.GenerateContentConfig(
+                system_instruction=GEMINI_SYSTEM_PROMPT,
+                max_output_tokens=GEMINI_MAX_TOKENS,
+                temperature=0.3,
+            )
+            self._offline = False
+        else:
+            print("[SentenceBuilder] No GEMINI_API_KEY in .env. "
+                  "OFFLINE MODE: sentences = space-joined word list.")
+            self._client = None
+            self._gen_config = None
+            self._offline = True
 
         self.word_buffer = []
         self._last_word_time = time.time()
@@ -89,20 +100,22 @@ class SentenceBuilder:
         ).start()
 
     def _generate_worker(self, words):
-        """워커 스레드 본체. Gemini 호출 결과를 큐에 푸시한다."""
-        prompt = f"수화 단어: [{', '.join(words)}]"
-        try:
-            response = self._client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=prompt,
-                config=self._gen_config,
-            )
-            sentence = response.text.strip() if response.text else " ".join(words)
-        except Exception as e:
-            print(f"[SentenceBuilder] Gemini API error: {e}")
+        """워커 스레드 본체. Gemini 호출 결과(또는 오프라인 fallback)를 큐에 푸시한다."""
+        if self._offline:
             sentence = " ".join(words)
-        finally:
-            with self._inflight_lock:
-                self._inflight = False
+        else:
+            prompt = f"수화 단어: [{', '.join(words)}]"
+            try:
+                response = self._client.models.generate_content(
+                    model=GEMINI_MODEL,
+                    contents=prompt,
+                    config=self._gen_config,
+                )
+                sentence = response.text.strip() if response.text else " ".join(words)
+            except Exception as e:
+                print(f"[SentenceBuilder] Gemini API error: {e}")
+                sentence = " ".join(words)
 
+        with self._inflight_lock:
+            self._inflight = False
         self._completed.put(sentence)
