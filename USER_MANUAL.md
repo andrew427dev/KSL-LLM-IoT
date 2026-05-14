@@ -295,6 +295,7 @@ PuTTY → Window → Translation → "Remote character set"을 `UTF-8`로 설정
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-05-14 | Gemini SDK를 `google-genai`로 마이그레이션 (`google-generativeai`는 EOL). 메인 인식 루프 블로킹 제거 — `SentenceBuilder`의 Gemini 호출, LCD I2C 쓰기, 부저 펄스를 모두 워커 스레드로 분리. 인식 직후 카메라 정지 시간이 사라짐 |
 | 2026-05-14 | `rpicam-vid` 서브프로세스 카메라 백엔드 추가 — Pi Camera v1/v2를 venv에서 잡지 못하던 문제 해소. SSH/PuTTY용 헤드리스 모드(`KSL_HEADLESS=1`) 도입. PuTTY 파일 전송 가이드(§5.1) 추가 |
 | 2026-05-14 | 초기 작성 — 30단어, Gemini 2.5 Flash, 카메라 자동감지 반영 |
 

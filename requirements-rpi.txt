@@ -10,8 +10,8 @@ opencv-python>=4.8.0
 tflite-runtime>=2.13.0
 numpy>=1.24.0
 
-# Gemini API
-google-generativeai>=0.5.0
+# Gemini API (신 SDK — google-generativeai는 EOL)
+google-genai>=0.3.0
 
 # TTS
 gTTS>=2.3.0

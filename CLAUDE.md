@@ -26,7 +26,9 @@
 | `config/settings.py` 의 `GEMINI_MODEL` | §0 한눈에 보기, §9 변경 이력 |
 | `.env.example` 항목 추가/삭제 | §2.1 `.env` 필수 항목 표 |
 | `requirements.txt` / `requirements-rpi.txt` 의 주요 패키지 | §1.2 소프트웨어 |
-| `src/main.py` 의 키바인딩(`q` 등), CLI 인자, 카메라 자동감지 로직, `CameraReader` 백엔드(opencv/rpicam/picamera2), `KSL_HEADLESS` 환경변수 | §3.1·§3.4·§1.1 카메라 행·§6 트러블슈팅 |
+| `src/main.py` 의 키바인딩(`q` 등), CLI 인자, 카메라 자동감지 로직, `CameraReader` 백엔드(opencv/rpicam/picamera2), `KSL_HEADLESS` 환경변수, `beep()` 동작 | §3.1·§3.4·§1.1 카메라 행·§6 트러블슈팅 |
+| `src/sentence_builder.py` 의 공개 API(`add_word`/`check_silence_trigger`/`poll_sentence`/`get_buffer_preview`), Gemini SDK 패키지명/`Client` 호출 방식 | §0 한눈에 보기 (파이프라인), §2.1 `.env` 표, §9 changelog (SDK 변경은 운용자에게 가시) |
+| `src/lcd_display.py` 의 공개 메서드 시그니처, 비동기 큐 정책 | §6 트러블슈팅 (LCD 무반응 케이스) |
 | 파일 전송 워크플로(scp/pscp/psftp/WinSCP/git pull) 변경 | §5.1 PuTTY로 파일 전송 |
 | `collect_data.py` 의 키바인딩(SPACE/q), 인자명 | §4 데이터 수집 |
 | `model/train.py`, `model/augment.py`, `model/evaluate.py` 의 CLI 인자 | §5 모델 학습 & 배포 |

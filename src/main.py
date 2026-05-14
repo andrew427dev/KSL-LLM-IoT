@@ -14,6 +14,7 @@ import os
 import shutil
 import subprocess
 import select
+import threading
 import numpy as np
 
 # 프로젝트 루트를 path에 추가
@@ -179,11 +180,16 @@ class CameraReader:
 
 
 def beep():
-    """수화 인식 확정 신호음."""
-    if GPIO_AVAILABLE:
-        GPIO.output(BUZZER_PIN, True)
-        time.sleep(0.1)
-        GPIO.output(BUZZER_PIN, False)
+    """수화 인식 확정 신호음 (비동기). 메인 인식 루프를 블록하지 않는다."""
+    if not GPIO_AVAILABLE:
+        return
+    threading.Thread(target=_beep_pulse, daemon=True).start()
+
+
+def _beep_pulse():
+    GPIO.output(BUZZER_PIN, True)
+    time.sleep(0.05)
+    GPIO.output(BUZZER_PIN, False)
 
 
 def main():
@@ -240,13 +246,14 @@ def main():
                 beep()
                 lcd.show_recognition(word, confidence)
 
-                # 3. 단어 버퍼에 추가
-                sentence = builder.add_word(word)
-                if sentence:
-                    _output_sentence(sentence, tts, lcd)
+                # 3. 단어 버퍼에 추가 (비동기 — 즉시 반환)
+                builder.add_word(word)
 
-            # 4. 침묵 트리거 확인
-            sentence = builder.check_silence_trigger()
+            # 4. 침묵 트리거 확인 (비동기 — 즉시 반환)
+            builder.check_silence_trigger()
+
+            # 4b. 완료된 문장 폴링 (Gemini 워커가 끝났을 때만 반환)
+            sentence = builder.poll_sentence()
             if sentence:
                 _output_sentence(sentence, tts, lcd)
 
