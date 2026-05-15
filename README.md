@@ -22,13 +22,13 @@ Camera → MediaPipe Hands → LSTM Classifier (TFLite)
 
 | Category | Technology |
 |----------|-----------|
-| Hardware | Raspberry Pi 4B, Pi Camera v2, I2C LCD 20x4, GPIO Buzzer |
-| Language | Python 3.11 |
+| Hardware | Raspberry Pi 4B, Pi Camera (v1 / v2 / Module 3), I2C LCD 20×4, GPIO Buzzer |
+| Language | Python **3.11** (mediapipe has no aarch64 wheels for Python 3.13 as of this writing) |
 | CV | MediaPipe Hands, OpenCV 4 |
-| AI/ML | TensorFlow / TFLite (LSTM) |
-| LLM | Google Gemini 2.5 Flash API |
-| TTS | gTTS / pyttsx3 |
-| IoT | RPi.GPIO, smbus2 |
+| AI/ML | TensorFlow (PC training) / `tflite-runtime` (RPi inference) |
+| LLM | Google Gemini 2.5 Flash via `google-genai` SDK |
+| TTS | gTTS + pygame (online) / pyttsx3 (offline fallback) |
+| IoT | `RPi.GPIO`, `smbus2`, libcamera / `rpicam-vid` |
 
 ---
 
@@ -37,29 +37,36 @@ Camera → MediaPipe Hands → LSTM Classifier (TFLite)
 ```
 KSL-LLM-IoT/
 ├── data/
-│   ├── raw/            # Raw sign language video samples (not committed)
+│   ├── raw/            # Raw video samples (not committed)
 │   ├── landmarks/      # Extracted MediaPipe landmark CSV files
 │   └── augmented/      # Augmented dataset
 ├── model/
-│   ├── train.py        # LSTM model training script
+│   ├── train.py        # LSTM training
+│   ├── augment.py      # Dataset augmentation
 │   ├── evaluate.py     # Model evaluation
-│   └── ksl_model.tflite  # Compiled TFLite model
+│   └── ksl_model.tflite  # Compiled TFLite model (not committed)
 ├── src/
-│   ├── main.py             # Main entry point
+│   ├── main.py             # Entry point, camera backends (OpenCV / rpicam-vid / picamera2)
 │   ├── hand_tracker.py     # MediaPipe landmark extraction
-│   ├── classifier.py       # TFLite inference
-│   ├── sentence_builder.py # Word buffer + Gemini API
-│   ├── tts_output.py       # gTTS / pyttsx3 voice output
-│   └── lcd_display.py      # I2C LCD controller
+│   ├── classifier.py       # TFLite inference (with dummy fallback)
+│   ├── sentence_builder.py # Word buffer + google-genai (with offline fallback)
+│   ├── tts_output.py       # gTTS / pyttsx3 voice output (async)
+│   └── lcd_display.py      # I2C LCD controller (async queue)
 ├── config/
 │   └── settings.py     # API keys, thresholds, constants
-├── tests/
-│   └── test_classifier.py
 ├── docs/
-│   └── wiring_diagram.png
+│   ├── wiring_diagram.png
+│   └── generate_wiring_diagram.py
+├── tests/
+├── collect_data.py         # Landmark CSV collection (PC)
+├── make_dummy_model.py     # Smoke-test dummy TFLite generator
+├── requirements.txt        # PC: training + dev
+├── requirements-rpi.txt    # RPi: inference only
 ├── .env.example
 ├── .gitignore
-├── requirements.txt
+├── USER_MANUAL.md          # End-user operating guide (Korean)
+├── CONTRIBUTING.md
+├── CLAUDE.md               # AI agent guidelines for this repo
 └── README.md
 ```
 
@@ -75,55 +82,162 @@ KSL-LLM-IoT/
 | Basic Verbs | 먹다, 마시다, 가다, 오다, 앉다, 서다, 자다 |
 | States | 배고프다, 목마르다, 아프다, 피곤하다, 행복하다 |
 | Requests | 도와주세요, 주세요, 기다리세요 |
-| Others | 화장실, 얼마예요, 완료(trigger) |
+| Others | 화장실, 얼마예요, **완료** (transmit trigger) |
+
+`완료` is the explicit transmit trigger. A 3-second silence after the last recognition also triggers sentence generation.
+
+---
+
+## 🔌 Hardware Connection
+
+### Components
+
+| Component | Spec | Notes |
+|-----------|------|-------|
+| Raspberry Pi 4B | RAM 4GB+, 64-bit Raspberry Pi OS (Bookworm or Trixie) | aarch64 |
+| Pi Camera | v1 (OV5647, fixed focus) / v2 (IMX219, fixed focus) / Module 3 (IMX708, autofocus) | CSI ribbon |
+| I2C LCD | 20×4, default address `0x27` | Address override via `LCD_I2C_ADDRESS` in `.env` |
+| Active Buzzer | 3.3V or 5V active type | Pin override via `BUZZER_PIN` in `.env` |
+| Speaker | 3.5mm jack or USB audio | TTS playback |
+| microSD | 32GB+, Class 10 | OS + dataset + model |
+| Power | 5V / 3A USB-C | Required when camera + speaker run concurrently |
+
+### Wiring (BCM pin numbers)
+
+| Signal | RPi Pin (BCM) | RPi Pin (Physical) | Component |
+|--------|---------------|-------------------|-----------|
+| 5V | — | Pin 2 | I2C LCD VCC |
+| GND | — | Pin 6 | I2C LCD GND |
+| SDA | GPIO2 | Pin 3 | I2C LCD SDA |
+| SCL | GPIO3 | Pin 5 | I2C LCD SCL |
+| Buzzer signal | **GPIO17** (default `BUZZER_PIN`) | Pin 11 | Active buzzer + |
+| Buzzer GND | — | Pin 9 | Active buzzer − |
+| Camera | — | CSI port | Pi Camera ribbon |
+| Audio | — | 3.5mm jack or USB | Speaker |
+
+Wiring diagram: [`docs/wiring_diagram.png`](docs/wiring_diagram.png) (regenerable with `python docs/generate_wiring_diagram.py`).
+
+### Enabling Interfaces
+
+I2C is disabled by default on a fresh Raspberry Pi OS install. Enable once:
+
+```bash
+sudo raspi-config
+# → Interface Options → I2C → Enable → Finish → Reboot
+```
+
+After reboot, verify hardware detection:
+
+```bash
+i2cdetect -y 1                    # I2C devices — expect entry at 0x27 (or configured address)
+rpicam-hello --timeout 2000       # Camera — expect libcamera init logs and frame capture
+```
 
 ---
 
 ## ⚙️ Setup
 
-### 1. Clone the repository
+The project uses two distinct environments:
+
+- **PC** — dataset preparation, model training, code development.
+- **Raspberry Pi 4B** — real-time inference, hardware integration, demo.
+
+`mediapipe` does not publish aarch64 wheels for Python 3.13. Both environments require **Python 3.11**. On systems where Python 3.11 is not present (e.g., Raspberry Pi OS Trixie ships with 3.13), [`uv`](https://docs.astral.sh/uv/) downloads a prebuilt 3.11 binary without compilation.
+
+### A. PC Environment (training + development)
+
 ```bash
+# A.1 Clone
 git clone https://github.com/andrew427dev/KSL-LLM-IoT.git
 cd KSL-LLM-IoT
-```
 
-### 2. Create virtual environment
-```bash
-python3 -m venv venv
-source venv/bin/activate
-```
+# A.2 Python 3.11 venv via uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source ~/.bashrc
+uv venv --python 3.11
+source .venv/bin/activate
 
-### 3. Install dependencies
-```bash
-pip install -r requirements.txt
-```
+# A.3 Install dependencies
+uv pip install -r requirements.txt
 
-### 4. Set up environment variables
-```bash
+# A.4 Configure env
 cp .env.example .env
-# Edit .env and add your Gemini API key
+# Edit .env — GEMINI_API_KEY can stay empty; SentenceBuilder will run in offline fallback.
+
+# A.5 (optional) Smoke-test the pipeline before collecting data or training
+python make_dummy_model.py        # Generates a dummy model/ksl_model.tflite
+python src/main.py                # GUI mode; press 'q' to quit
 ```
 
-### 5. Collect data (Week 2)
+### B. Raspberry Pi Environment (inference deployment)
+
 ```bash
+# B.1 System packages
+sudo apt update
+sudo apt install -y i2c-tools rpicam-apps libcap-dev libcamera-dev \
+                    pkg-config python3-dev build-essential
+
+# B.2 Clone (or transfer the repo via pscp — see USER_MANUAL §5.1)
+git clone https://github.com/andrew427dev/KSL-LLM-IoT.git ~/Desktop/KSL-LLM-IoT
+cd ~/Desktop/KSL-LLM-IoT
+
+# B.3 Python 3.11 venv via uv
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source ~/.bashrc
+uv venv --python 3.11
+source .venv/bin/activate
+
+# B.4 RPi dependencies (tflite-runtime instead of full TensorFlow)
+uv pip install -r requirements-rpi.txt
+
+# B.5 Enable I2C and verify hardware
+#   (see "Hardware Connection — Enabling Interfaces" above)
+
+# B.6 Configure env
+cp .env.example .env
+nano .env
+# Required for LLM output: GEMINI_API_KEY=<your key>
+# (Key obtainable at https://aistudio.google.com — free tier covers project usage)
+
+# B.7 Deploy the trained model
+#   Transfer model/ksl_model.tflite from PC to ~/Desktop/KSL-LLM-IoT/model/
+#   See USER_MANUAL.md §5.1 for pscp/psftp/WinSCP procedures.
+
+# B.8 Run
+python src/main.py                # GUI mode (requires attached display)
+KSL_HEADLESS=1 python src/main.py # Headless (SSH / PuTTY) — Ctrl+C to quit
+```
+
+### C. Data Collection & Training (PC)
+
+```bash
+# C.1 Collect — repeat for each KSL label
 python collect_data.py --word 안녕 --samples 100
-```
+# In-app: SPACE = start/stop, q = quit
+# Output: data/landmarks/<word>/0000.csv, 0001.csv, ...
 
-### 6. Augment dataset (Week 3)
-```bash
-# data/landmarks/ → data/augmented/ (원본 1개당 증강 3개 생성)
+# C.2 (optional) Augment
 python model/augment.py --factor 3
-```
 
-### 7. Train model (Week 3)
-```bash
+# C.3 Train → model/ksl_model.tflite
 python model/train.py
+
+# C.4 Evaluate
+python model/evaluate.py
 ```
 
-### 8. Run the system
-```bash
-python src/main.py
-```
+After training, transfer `model/ksl_model.tflite` to the Raspberry Pi (Section B.7).
+
+### D. Operation Modes
+
+| `GEMINI_API_KEY` | `model/ksl_model.tflite` | Behavior |
+|------------------|-------------------------|----------|
+| set | present | Full operation — LLM sentence generation, trained classifier |
+| set | absent | LLM works, classifier returns `KSL_LABELS[0]` (dummy mode) |
+| empty | present | Classifier works, sentences are space-joined word lists (offline fallback) |
+| empty | absent | Full smoke-test mode — pipeline runs end-to-end, no real recognition or generation |
+
+This matrix allows incremental bring-up: hardware → camera → classifier → LLM, each verifiable independently.
 
 ---
 
@@ -148,6 +262,15 @@ python src/main.py
 | Inference FPS on RPi 4B | ≥ 20 FPS |
 | LLM response latency | ≤ 2 sec |
 | End-to-end pipeline delay | ≤ 4 sec |
+
+---
+
+## 📖 Documentation
+
+- **[USER_MANUAL.md](USER_MANUAL.md)** — End-user operating guide (Korean). Daily operation, data collection, PuTTY file transfer (§5.1), troubleshooting (§6), changelog (§9).
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** — Contribution guidelines.
+- **[CLAUDE.md](CLAUDE.md)** — AI agent guidelines and documentation update triggers for this repo.
+- **[docs/wiring_diagram.png](docs/wiring_diagram.png)** — Hardware wiring reference.
 
 ---
 
