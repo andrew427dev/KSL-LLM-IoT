@@ -1,9 +1,13 @@
 # Environment
 .env
 venv/
+.venv/
 __pycache__/
 *.pyc
 *.pyo
+
+# Tooling / scratch
+.omc/
 
 # Model files (large)
 *.tflite
