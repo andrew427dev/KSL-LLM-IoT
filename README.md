@@ -276,11 +276,24 @@ This matrix allows incremental bring-up: hardware → camera → classifier → 
 
 ## 📚 References
 
-1. Shin, J. et al. (2023). Dynamic Korean Sign Language Recognition. **IEEE Access**, 11, 143501–143513.
-2. Miah, A. S. M. et al. (2023). KSL Recognition Using Transformer. **Applied Sciences**, 13(5), 3029.
-3. Fang, S. et al. (2024). SignLLM: Sign Language Production LLMs. **(ICCV 2025)**
-4. Sánchez-Vicinaiz, T. J. et al. (2024). MediaPipe + CNN on Raspberry Pi. **Technologies**, 12(8), 124.
-5. KSL-Guide Dataset (IEEE FG 2021): https://github.com/ChelseaGH/KSL-Guide
+### Papers
+
+1. Shin, J. et al. (2023). Dynamic Korean Sign Language Recognition Using Pose Estimation-Based and Attention-Based Neural Network. **IEEE Access**, 11, 143501–143513.
+2. Miah, A. S. M. et al. (2023). Korean Sign Language Recognition Using Transformer-Based Deep Neural Network. **Applied Sciences**, 13(5), 3029.
+3. Sánchez-Vicinaiz, T. J. et al. (2024). MediaPipe + CNN on Raspberry Pi. **Technologies**, 12(8), 124.
+4. Fang, S. et al. (2024). SignLLM: Sign Language **Production** LLMs (ICCV 2025). _\*수어 생성(Production) 모델이라 인식용 데이터 출처는 아님. LLM 접근법 참고용._
+
+### Public KSL datasets
+
+| # | 출처 | 규모 | 포맷 | 접근 |
+|---|------|------|------|------|
+| 1 | [KSL-Guide (KAIST, FG 2021)](https://github.com/ChelseaGH/KSL-Guide) | 121K 영상 / 2,000 문장 + 3,000 단어 | MP4 30FPS + 137 keypoint JSON (양손+몸+얼굴) | AI Hub 가입 + 한국인 한정 |
+| 2 | [KSL-77 (Yang et al., 2019)](https://github.com/Yangseung/KSL) | 1,540 영상 / 77 클래스 / 20 signers | RGB 255×255, Optical Flow, MP4 | Dropbox 직접 다운로드, 라벨은 Google Drive |
+| 3 | [musaru/KSL (Shin & Miah 2023 코드)](https://github.com/musaru/KSL) | KSL-77 기반 GCN 구현 | PyTorch + STGCN.ipynb, 47 pose landmark | 코드 공개 |
+| 4 | [AIRC-KETI/GKSL-dataset](https://github.com/AIRC-KETI/GKSL-dataset) | Gloss 레벨 KSL | (확인 필요) | LICENSE.md 별도 |
+| 5 | [KETI 응급 KSL (arXiv:1811.11436)](https://arxiv.org/abs/1811.11436) | 14,672 영상 / 419 단어 + 105 문장 | RGB + OpenPose | 비공개 가능성, 논문 contact 필요 |
+
+> 본 프로젝트의 30단어 인식 모델은 1차로 `collect_data.py`를 통한 **자체 수집** 데이터를 사용한다. 위 외부 데이터셋은 라벨 매핑·키포인트 정의(MediaPipe 21점 vs OpenPose/137점) 일치 여부를 검토한 뒤 보조 학습 데이터로 사용 여부를 결정한다.
 
 ---
 
