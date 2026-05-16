@@ -44,7 +44,7 @@ class KSLClassifier:
 
     def add_frame(self, landmarks):
         """
-        랜드마크 벡터(63,)를 시퀀스 버퍼에 추가합니다.
+        랜드마크 벡터(INPUT_SHAPE[1] = 126,)를 시퀀스 버퍼에 추가합니다.
         """
         if landmarks is not None:
             self.sequence_buffer.append(landmarks)
@@ -64,7 +64,7 @@ class KSLClassifier:
             label_idx = 0
         else:
             sequence = np.array(self.sequence_buffer, dtype=np.float32)
-            sequence = np.expand_dims(sequence, axis=0)  # (1, 30, 63)
+            sequence = np.expand_dims(sequence, axis=0)  # (1, 30, 126)
 
             self.interpreter.set_tensor(self.input_details[0]['index'], sequence)
             self.interpreter.invoke()

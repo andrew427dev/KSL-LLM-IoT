@@ -3,4 +3,6 @@
 #
 # Structure:
 #   data/landmarks/{word}/{index:04d}.csv
-#   Each CSV: 30 rows (frames) x 63 columns (21 landmarks x 3 axes)
+#   Each CSV: 30 rows (frames) x 126 columns
+#            = [LEFT 21 landmarks × 3 axes | RIGHT 21 landmarks × 3 axes]
+#   미감지 손은 zero-pad. 양손 모두 미감지된 프레임은 시퀀스에 포함되지 않는다.

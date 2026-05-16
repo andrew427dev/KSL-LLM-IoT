@@ -40,13 +40,21 @@ Raspberry Pi 4B (Raspberry Pi OS Trixie, aarch64) + Pi Camera v1 (OV5647) 환경
 
 ### 1.3 미완료
 
-- [ ] 데이터 수집: 0 / 3,000 시퀀스 (30단어 × 100샘플)
+- [ ] 데이터 수집: 0 / 3,000 시퀀스 (30단어 × 100샘플, **양손 입력 기준**)
 - [ ] LSTM 학습: `model/ksl_model.tflite` 미생성 (현재 dummy만 가능)
 - [ ] 하드웨어 결선: LCD / 부저 / 스피커 모두 미연결
 - [ ] Gemini API 키 발급 및 `.env` 등록
 - [ ] 종단 FPS 측정 (목표 ≥20 FPS)
 - [ ] 1차 발표 자료 (Week 4)
 - [ ] 데모 영상·최종 보고서 (Week 6)
+
+### 1.4 입력 차원 정책 (2026-05-16 확정)
+
+- KSL는 양손 언어이므로 단일 손(63차원) 입력으로는 의미 보존이 불가능.
+- 입력 = **126차원 = [LEFT 21×3 | RIGHT 21×3]**. 각 손은 자신의 손목 기준 정규화.
+- 미감지 손은 zero-pad. 양손 모두 미감지된 프레임은 시퀀스 누락(`extract_landmarks()` None).
+- MediaPipe handedness는 *입력이 거울 모드(selfie)임을 가정* — `main.py`/`collect_data.py`가 `cv2.flip(frame, 1)` 후 호출하므로 'Left' = 사용자의 해부학적 왼손.
+- 한 손 단어(예: "안녕", "주세요" 중 한 손 위주 동작)는 사용한 손이 LEFT인지 RIGHT인지 일관성 있게 수집해야 한다(예: 모든 시연자가 주손=RIGHT 사용).
 
 ---
 

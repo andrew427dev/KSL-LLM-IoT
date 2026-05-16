@@ -29,9 +29,11 @@ GEMINI_SYSTEM_PROMPT = """
 MODEL_PATH = os.getenv("MODEL_PATH", "model/ksl_model.tflite")
 CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", 0.85))
 SEQUENCE_LENGTH = int(os.getenv("SEQUENCE_LENGTH", 30))  # frames
-NUM_LANDMARKS = 21
-NUM_AXES = 3  # x, y, z
-INPUT_SHAPE = (SEQUENCE_LENGTH, NUM_LANDMARKS * NUM_AXES)  # (30, 63)
+NUM_HANDS = 2          # KSL는 양손 언어 — LEFT/RIGHT 두 손 입력 고정
+NUM_LANDMARKS = 21     # per hand
+NUM_AXES = 3           # x, y, z
+# 한 프레임 = [LEFT_63 | RIGHT_63] = 126. 미감지 손은 zero-pad.
+INPUT_SHAPE = (SEQUENCE_LENGTH, NUM_HANDS * NUM_LANDMARKS * NUM_AXES)  # (30, 126)
 
 # ── KSL Word Labels ─────────────────────────────────────
 KSL_LABELS = [
