@@ -54,7 +54,8 @@ Raspberry Pi 4B (Raspberry Pi OS Trixie, aarch64) + Pi Camera v1 (OV5647) 환경
 - 입력 = **126차원 = [LEFT 21×3 | RIGHT 21×3]**. 각 손은 자신의 손목 기준 정규화.
 - 미감지 손은 zero-pad. 양손 모두 미감지된 프레임은 시퀀스 누락(`extract_landmarks()` None).
 - MediaPipe handedness는 *입력이 거울 모드(selfie)임을 가정* — `main.py`/`collect_data.py`가 `cv2.flip(frame, 1)` 후 호출하므로 'Left' = 사용자의 해부학적 왼손.
-- 한 손 단어(예: "안녕", "주세요" 중 한 손 위주 동작)는 사용한 손이 LEFT인지 RIGHT인지 일관성 있게 수집해야 한다(예: 모든 시연자가 주손=RIGHT 사용).
+- 한 손 단어(예: "안녕", "주세요" 중 한 손 위주 동작)는 시연자가 자신의 **주손**으로 자연스럽게 수행한다 — 왼손잡이는 LEFT에, 오른손잡이는 RIGHT에 수집된다. `model/augment.py:flip_horizontal`이 LEFT↔RIGHT 블록 swap을 수행하므로 학습 데이터엔 양쪽 분포가 자연스럽게 채워진다. **억지로 비주손 시연을 강요하지 않는다** (부자연스러운 동작이 학습 분포에 들어가는 것을 막기 위함).
+- handedness 신뢰도: `src/hand_tracker.py:HANDEDNESS_SCORE_THRESHOLD = 0.7` 미만의 손은 미감지로 처리. 두 손이 동일 라벨로 분류되는 충돌 케이스는 score 낮은 쪽을 반대편으로 재배정하며 stderr에 warning을 출력한다. Week 2 수집 중 raw score 분포를 보고 임계값을 0.6~0.8 범위에서 재조정 가능.
 
 ---
 
