@@ -18,7 +18,9 @@ import sys
 import argparse
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config.settings import KSL_LABELS, SEQUENCE_LENGTH
+from config.settings import KSL_LABELS, SEQUENCE_LENGTH, INPUT_SHAPE
+
+INPUT_DIM = INPUT_SHAPE[1]  # 126 (2 hands × 21 × 3)
 
 LANDMARKS_DIR = "data/landmarks"
 AUGMENTED_DIR = "data/augmented"
@@ -27,12 +29,15 @@ AUGMENTED_DIR = "data/augmented"
 # ── 증강 함수 ───────────────────────────────────────────
 
 def flip_horizontal(seq: np.ndarray) -> np.ndarray:
-    """x 좌표 부호 반전으로 좌우 대칭 시퀀스 생성."""
+    """
+    실제 거울 효과 = (1) 모든 x 좌표 부호 반전 + (2) LEFT/RIGHT 손 블록 swap.
+    seq shape: (T, 126) = [LEFT_63 | RIGHT_63].
+    x 컬럼은 0, 3, 6, ..., 123 — half 경계와 무관하게 동일 규칙.
+    """
     augmented = seq.copy()
-    # (30, 63) — 63 = 21 landmarks × 3 (x, y, z)
-    # x축은 index 0, 3, 6, ... (3k번째 열)
     augmented[:, 0::3] *= -1
-    return augmented
+    n_half = seq.shape[1] // 2  # 63
+    return np.concatenate([augmented[:, n_half:], augmented[:, :n_half]], axis=1)
 
 
 def add_noise(seq: np.ndarray, std: float = 0.01) -> np.ndarray:
@@ -98,7 +103,7 @@ def augment_label(label: str, factor: int):
             print(f"  [Error] {fname}: {e}")
             continue
 
-        if seq.shape != (SEQUENCE_LENGTH, 63):
+        if seq.shape != (SEQUENCE_LENGTH, INPUT_DIM):
             continue
 
         # 각 원본 샘플에 대해 factor개 증강 생성

@@ -8,7 +8,9 @@ import sys
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config.settings import SEQUENCE_LENGTH
+from config.settings import SEQUENCE_LENGTH, INPUT_SHAPE
+
+INPUT_DIM = INPUT_SHAPE[1]  # 126 (2 hands × 21 × 3)
 
 MODEL_PATH = os.environ.get("MODEL_PATH", "model/ksl_model.tflite")
 MODEL_AVAILABLE = os.path.exists(MODEL_PATH)
@@ -26,7 +28,7 @@ def test_buffer_fills():
         return
     clf = _make_classifier()
     for _ in range(SEQUENCE_LENGTH - 1):
-        clf.add_frame(np.zeros(63, dtype=np.float32))
+        clf.add_frame(np.zeros(INPUT_DIM, dtype=np.float32))
     result = clf.predict()
     assert result is None, "Buffer not full — should return None"
     print("[PASS] test_buffer_fills")
@@ -50,7 +52,7 @@ def test_full_pipeline():
         return
 
     clf = _make_classifier()
-    dummy = np.random.rand(63).astype(np.float32)
+    dummy = np.random.rand(INPUT_DIM).astype(np.float32)
     for _ in range(SEQUENCE_LENGTH):
         clf.add_frame(dummy)
 
@@ -66,7 +68,7 @@ def test_buffer_cleared_after_recognition():
         return
 
     clf = _make_classifier()
-    dummy = np.random.rand(63).astype(np.float32)
+    dummy = np.random.rand(INPUT_DIM).astype(np.float32)
     for _ in range(SEQUENCE_LENGTH):
         clf.add_frame(dummy)
 

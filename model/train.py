@@ -16,12 +16,14 @@ from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import LabelEncoder
 from config.settings import KSL_LABELS, SEQUENCE_LENGTH, INPUT_SHAPE
 
+INPUT_DIM = INPUT_SHAPE[1]  # 126 (2 hands × 21 × 3)
+
 
 def load_dataset(landmarks_dir="data/landmarks", augmented_dir="data/augmented"):
     """
     data/landmarks/ (원본) + data/augmented/ (증강) 에서 CSV를 로드합니다.
     augmented_dir 가 없거나 비어 있으면 원본만 사용합니다.
-    각 CSV: 30행(프레임) × 63열(랜드마크)
+    각 CSV: 30행(프레임) × 126열 = [LEFT 21×3 | RIGHT 21×3]
     """
     X, y = [], []
 
@@ -41,7 +43,7 @@ def load_dataset(landmarks_dir="data/landmarks", augmented_dir="data/augmented")
                 path = os.path.join(label_dir, fname)
                 try:
                     seq = np.loadtxt(path, delimiter=",")
-                    if seq.shape == (SEQUENCE_LENGTH, 63):
+                    if seq.shape == (SEQUENCE_LENGTH, INPUT_DIM):
                         X.append(seq)
                         y.append(label)
                 except Exception as e:
