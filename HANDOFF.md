@@ -1,30 +1,30 @@
-# HANDOFF — 2026-05-15
+# HANDOFF — 2026-05-27
 
 본 문서는 KSL-LLM-IoT 프로젝트 작업을 이어받는 팀원·차기 세션이 *현재 상태와 다음 단계*를 파악하기 위해 작성된다. 매번의 작업 마무리 시 갱신한다.
 
-- 작성 시점: **2026-05-15** (Week 2 진입 직후)
+- 작성 시점: **2026-05-27** (Week 4 진입)
 - 작성자: 이성준 + Claude (Opus 4.7)
 - 대상: 배진규(팀원), 이후 본인, 차기 세션
 
 ---
 
-## 1. 현재 상태 (2026-05-15 기준)
+## 1. 현재 상태 (2026-05-27 기준)
 
 ### 1.1 코드
 
 - 기본 브랜치: `main` (보호) ← `develop` ← feature 브랜치 (GitFlow 변형)
-- **진행 중 PR: [#2](https://github.com/andrew427dev/KSL-LLM-IoT/pull/2)** — `feat/smoke-test-pipeline` → `develop`, 머지 대기.
-- PR #2 커밋 5개:
+- **현재 작업 브랜치: `develop`** (HEAD: `d3ce0c0`)
+- 머지 완료 PR:
 
-  | # | SHA | 내용 |
-  |---|------|------|
-  | 1 | `13b3fa9` | smoke-test 인프라 (rpicam-vid 백엔드 + 헤드리스 + 더미 분류기 + USER_MANUAL/CLAUDE 신규) |
-  | 2 | `cdb2ac2` | 비동기 파이프라인 + google-genai SDK 마이그레이션 |
-  | 3 | `345f11e` | SentenceBuilder 오프라인 fallback |
-  | 4 | `87de902` | README 환경 설치·하드웨어 결선 + LICENSE |
-  | 5 | (이 문서) | HANDOFF.md 신규 |
+  | PR | 브랜치 | 내용 |
+  |----|--------|------|
+  | #2 | `feat/smoke-test-pipeline` | smoke-test 인프라, 비동기 파이프라인, genai SDK |
+  | #5 | `docs/data-sources` | 데이터 소스 섹션 확장 |
+  | #6 | `develop` → `main` | develop 통합 머지 |
+  | #7 | `feat/two-hand-input` | 양손 입력 전환 (INPUT_SHAPE 63→126) |
+  | #8 | `ci/static-checks` | 정적 검증 워크플로 추가 |
 
-- 머지 흐름: **PR #2 → develop → main**. 다음 feature 브랜치는 PR #2 머지 후 `develop` 기준으로 새로 분기한다.
+- 머지 흐름: feature 브랜치 → `develop` → `main`.
 
 ### 1.2 검증된 동작
 
@@ -40,8 +40,8 @@ Raspberry Pi 4B (Raspberry Pi OS Trixie, aarch64) + Pi Camera v1 (OV5647) 환경
 
 ### 1.3 미완료
 
-- [ ] 데이터 수집: 0 / 3,000 시퀀스 (30단어 × 100샘플, **양손 입력 기준**)
-- [ ] LSTM 학습: `model/ksl_model.tflite` 미생성 (현재 dummy만 가능)
+- [ ] 데이터 수집: 직접 촬영 + AI Hub 변환 병행 (§1.5 참조)
+- [ ] LSTM 학습: `model/ksl_model.tflite` 미생성
 - [ ] 하드웨어 결선: LCD / 부저 / 스피커 모두 미연결
 - [ ] Gemini API 키 발급 및 `.env` 등록
 - [ ] 종단 FPS 측정 (목표 ≥20 FPS)
@@ -56,6 +56,63 @@ Raspberry Pi 4B (Raspberry Pi OS Trixie, aarch64) + Pi Camera v1 (OV5647) 환경
 - MediaPipe handedness는 *입력이 거울 모드(selfie)임을 가정* — `main.py`/`collect_data.py`가 `cv2.flip(frame, 1)` 후 호출하므로 'Left' = 사용자의 해부학적 왼손.
 - 한 손 단어(예: "안녕", "주세요" 중 한 손 위주 동작)는 시연자가 자신의 **주손**으로 자연스럽게 수행한다 — 왼손잡이는 LEFT에, 오른손잡이는 RIGHT에 수집된다. `model/augment.py:flip_horizontal`이 LEFT↔RIGHT 블록 swap을 수행하므로 학습 데이터엔 양쪽 분포가 자연스럽게 채워진다. **억지로 비주손 시연을 강요하지 않는다** (부자연스러운 동작이 학습 분포에 들어가는 것을 막기 위함).
 - handedness 신뢰도: `src/hand_tracker.py:HANDEDNESS_SCORE_THRESHOLD = 0.7` 미만의 손은 미감지로 처리. 두 손이 동일 라벨로 분류되는 충돌 케이스는 score 낮은 쪽을 반대편으로 재배정하며 stderr에 warning을 출력한다. Week 2 수집 중 raw score 분포를 보고 임계값을 0.6~0.8 범위에서 재조정 가능.
+
+### 1.5 AI Hub 수어 데이터셋 변환 파이프라인 (2026-05-27)
+
+직접 촬영 외에 [AI Hub 수어 영상 데이터셋](https://aihub.or.kr/aihubdata/data/view.do?currMenu=115&topMenu=100&aihubDataSe=realm&dataSetSn=103)의 3D 키포인트를 프로젝트 CSV로 변환하여 학습 데이터를 보강할 수 있다.
+
+**데이터셋 구조:**
+
+| 경로 | 내용 | 필요 여부 |
+|------|------|-----------|
+| `라벨링데이터/REAL/WORD/*_keypoint/` | 프레임별 3D 키포인트 JSON | **필요** |
+| `수어 영상/.../morpheme/` | WORD번호 → 한국어 단어 매핑 | **필요** |
+| `원천데이터/REAL/WORD/` (MP4) | 원본 영상 | 불필요 (키포인트 이미 추출됨) |
+
+**AI Hub 3D 키포인트 → 프로젝트 호환성:**
+
+| 항목 | AI Hub | 프로젝트 |
+|------|--------|----------|
+| 손 관절 수 | 21개 | 21개 (동일) |
+| 3D 좌표 | (x, y, z, confidence) | (x, y, z) |
+| 정규화 | 절대 좌표 (멀티카메라 3D 복원) | 손목 기준 상대 좌표 |
+
+변환 시 confidence를 버리고 (x,y,z)만 추출한 뒤 손목 기준 정규화를 적용한다. `hand_tracker.py:_normalize_hand()`와 동일한 로직이다.
+
+**KSL_LABELS 매칭 현황 (3,000개 단어 중):**
+
+- 정확 매칭: 14개 — 나, 당신, 좋다, 싫다, 맞다, 가다, 오다, 서다, 자다, 배고프다, 목마르다, 아프다, 피곤하다, 완료
+- 어근 매칭: 5개 — 감사합니다(←감사), 먹다(←먹), 행복하다(←행복), 얼마예요(←얼마), 기다리세요(←기다리다)
+- 매칭 없음: 11개 — 안녕, 미안합니다, 반갑습니다, 우리, 네, 아니오, 마시다, 앉다, 도와주세요, 주세요, 화장실
+
+**현재 보유 키포인트:** WORD1501-1520 (운전면허, 골키퍼 등) — KSL_LABELS와 겹침 없음. 아래 WORD번호에 해당하는 키포인트 패키지를 AI Hub에서 추가 다운로드해야 한다:
+
+```
+WORD0738(좋다)  WORD0742(완료)  WORD0943(가다)  WORD0953(배고프다)
+WORD1148(서다)  WORD1149(오다)  WORD1152(아프다) WORD1157(나)
+WORD1158(피곤하다) WORD1169(행복)  WORD1174(맞다)  WORD1278(싫다)
+WORD1290(감사)  WORD1353(당신)  WORD1377(자다)  WORD2036(목마르다)
+```
+
+**변환 스크립트 사용법:**
+
+```bash
+# 매칭 현황 확인 (변환 없이 스캔만)
+python convert_aihub.py --dataset /path/to/aihub/dataset --scan
+
+# 정면 카메라만 변환 (실 사용 환경과 유사)
+python convert_aihub.py --dataset /path/to/aihub/dataset --angles F
+
+# 전체 카메라 각도 사용 (데이터 5배, 다양성 확보)
+python convert_aihub.py --dataset /path/to/aihub/dataset
+
+# 슬라이딩 윈도우 stride 조정 (작을수록 샘플 많음)
+python convert_aihub.py --dataset /path/to/aihub/dataset --stride 10
+```
+
+출력은 `data/landmarks/<단어>/aihub_NNNN.csv`로 저장되며, 기존 직접 촬영 데이터와 동일 디렉터리에 병합된다. `train.py`가 자동으로 인식한다.
+
+**좌표계 차이 주의:** AI Hub는 멀티카메라 3D 복원 좌표(미터 단위), MediaPipe는 0~1 정규화 좌표이다. 손목 기준 상대 좌표 변환으로 스케일 차이를 흡수하지만, 학습 시 직접 촬영 데이터와 혼합 비율을 조절하며 검증 정확도를 모니터링해야 한다.
 
 ---
 
@@ -247,7 +304,8 @@ README §🔌 Hardware Connection 참조. 핵심:
 | `src/classifier.py` | TFLite 추론 + 더미 모드 |
 | `src/lcd_display.py` | I2C LCD + 워커 스레드 큐 |
 | `make_dummy_model.py` | 검증용 더미 TFLite 생성 (PC) |
-| `collect_data.py` | 랜드마크 CSV 수집 (PC) |
+| `collect_data.py` | 랜드마크 CSV 수집 — 직접 촬영 (PC) |
+| `convert_aihub.py` | AI Hub 수어 키포인트 JSON → 프로젝트 CSV 변환 (§1.5 참조) |
 
 ---
 
@@ -269,4 +327,5 @@ README §🔌 Hardware Connection 참조. 핵심:
 
 | 날짜 | 작성자 | 내용 |
 |------|--------|------|
+| 2026-05-27 | 이성준 + Claude | §1.1 PR #7-#8 반영, §1.5 AI Hub 데이터셋 변환 파이프라인 추가, §6 convert_aihub.py 등록 |
 | 2026-05-15 | 이성준 + Claude | 초안 작성 (PR #2 진행 중, Week 2 진입 시점, smoke-test 인프라 완성) |
