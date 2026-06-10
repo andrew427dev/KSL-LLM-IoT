@@ -144,6 +144,11 @@ def train():
         random_state=RANDOM_SEED, stratify=y_train
     )
 
+    # one-hot — label smoothing을 위해 categorical 사용
+    y_train_cat = tf.keras.utils.to_categorical(y_train, len(KSL_LABELS))
+    y_val_cat = tf.keras.utils.to_categorical(y_val, len(KSL_LABELS))
+    y_test_cat = tf.keras.utils.to_categorical(y_test, len(KSL_LABELS))
+
     # 클래스 불균형 보정 — AI Hub 단어별 시연자 수 차이 대비
     counts = np.bincount(y_train, minlength=len(KSL_LABELS)).astype(np.float64)
     present = counts > 0
@@ -156,7 +161,9 @@ def train():
     model = build_model(len(KSL_LABELS))
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
-        loss='sparse_categorical_crossentropy',
+        # label smoothing — 좁은 시연자 분포에 대한 병적 과신(모든 예측 ~1.00,
+        # RPi 실기 진단으로 확인)을 완화해 CONFIDENCE_THRESHOLD가 의미를 갖게 한다
+        loss=tf.keras.losses.CategoricalCrossentropy(label_smoothing=0.1),
         metrics=['accuracy']
     )
     model.summary()
@@ -173,8 +180,8 @@ def train():
     # 훈련
     print("[Train] Training started...")
     history = model.fit(
-        X_train, y_train,
-        validation_data=(X_val, y_val),
+        X_train, y_train_cat,
+        validation_data=(X_val, y_val_cat),
         epochs=200,
         batch_size=32,
         class_weight=class_weight,
@@ -182,7 +189,7 @@ def train():
     )
 
     # 평가
-    test_loss, test_acc = model.evaluate(X_test, y_test)
+    test_loss, test_acc = model.evaluate(X_test, y_test_cat)
     print(f"\n[Train] Test Accuracy: {test_acc:.4f}")
 
     # TFLite 변환 + 검증

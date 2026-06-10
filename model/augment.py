@@ -92,6 +92,42 @@ def add_noise(seq: np.ndarray, std: float = 0.01) -> np.ndarray:
     return seq + noise
 
 
+def z_jitter(seq: np.ndarray, scale_range=(0.6, 1.4), std: float = 0.05) -> np.ndarray:
+    """
+    z축 도메인 갭 증강. 학습 데이터(AI Hub)는 멀티뷰 3D 복원의 정밀한 z,
+    런타임(MediaPipe)은 단안 추정 z로 스케일·노이즈 특성이 다르다
+    (동일 영상 비교 실측 상관 0.577 — tools/verify_aihub_alignment.py).
+    z 성분에 랜덤 스케일 + 가우시안 노이즈를 가해 모델의 z 의존도를 낮춘다.
+
+    presence 불변식 유지: 부재 손 슬롯(값 0)은 스케일에 불변이고,
+    노이즈는 존재하는 손 슬롯과 양손 존재 프레임의 wrist_vec z에만 가한다.
+    """
+    out = seq.copy()
+    s = np.random.uniform(*scale_range)
+
+    left_present = seq[:, PRESENCE_FLAG_START] == 1.0
+    right_present = seq[:, PRESENCE_FLAG_START + 1] == 1.0
+    both_present = left_present & right_present
+
+    # 손 슬롯 z: 인덱스 2, 5, ..., 123 (양손 42개)
+    z_cols = np.arange(2, WRIST_VEC_START, 3)
+    out[:, z_cols] *= s
+    noise = np.random.normal(0, std, (len(seq), len(z_cols))).astype(np.float32)
+    half = len(z_cols) // 2
+    noise[~left_present, :half] = 0.0
+    noise[~right_present, half:] = 0.0
+    out[:, z_cols] += noise
+
+    # 손목간 벡터 z (인덱스 WRIST_VEC_START+2) — 양손 존재 프레임만
+    wz = WRIST_VEC_START + 2
+    out[:, wz] *= s
+    out[both_present, wz] += np.random.normal(
+        0, std, int(both_present.sum())
+    ).astype(np.float32)
+
+    return out
+
+
 def time_warp(seq: np.ndarray, max_jitter: float = 0.15) -> np.ndarray:
     """
     단조증가 랜덤 앵커 기반 비선형 시간 왜곡 — 구간별로 빠르고 느린
@@ -160,6 +196,7 @@ def augment_label(label: str, factor: int):
 
         # 각 원본 샘플에 대해 factor개 증강 생성.
         # flip은 FLIP_SAFE_LABELS에 등록된 라벨만 — 그 외에는 time_warp+noise로 대체.
+        # z_jitter는 모든 증강에 공통 적용 (z 도메인 갭은 변형과 무관하게 존재).
         for _ in range(factor):
             std = np.random.uniform(0.005, 0.02)
             if flip_ok:
@@ -176,7 +213,7 @@ def augment_label(label: str, factor: int):
                     time_warp(add_noise(seq, std=0.01)),
                     add_noise(time_warp(seq), std=0.01),
                 ]
-            chosen = augmentations[aug_idx % len(augmentations)]
+            chosen = z_jitter(augmentations[aug_idx % len(augmentations)])
             aug_idx += 1
 
             out_path = os.path.join(dst_dir, f"aug_{saved:05d}.csv")

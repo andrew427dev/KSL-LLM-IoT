@@ -16,7 +16,7 @@ from config.settings import (
     SEQUENCE_LENGTH, FEATURE_DIM,
     LEFT_SLOT_START, RIGHT_SLOT_START, WRIST_VEC_START, PRESENCE_FLAG_START,
 )
-from model.augment import flip_horizontal, add_noise, time_warp
+from model.augment import flip_horizontal, add_noise, time_warp, z_jitter
 
 _PER_HAND = RIGHT_SLOT_START - LEFT_SLOT_START  # 63
 
@@ -134,6 +134,28 @@ def test_time_warp_restores_absent_slot_invariant():
     print("[PASS] test_time_warp_restores_absent_slot_invariant")
 
 
+def test_z_jitter_only_touches_z():
+    """z_jitter는 z 성분만 변경 — x·y·flag 불변, 부재 슬롯 z는 0 유지."""
+    np.random.seed(4)
+    seq = make_seq(left_val=0.5, wrist_vec=None)  # 우손 부재
+    out = z_jitter(seq)
+    # x(0::3)·y(1::3) 불변 (손 슬롯 구간)
+    np.testing.assert_array_equal(
+        out[:, 0:WRIST_VEC_START:3], seq[:, 0:WRIST_VEC_START:3])
+    np.testing.assert_array_equal(
+        out[:, 1:WRIST_VEC_START:3], seq[:, 1:WRIST_VEC_START:3])
+    # presence flag 불변
+    np.testing.assert_array_equal(
+        out[:, PRESENCE_FLAG_START:], seq[:, PRESENCE_FLAG_START:])
+    # 존재하는 좌손 z는 변함
+    assert np.any(out[:, 2:_PER_HAND:3] != seq[:, 2:_PER_HAND:3])
+    # 부재 우손 슬롯 z는 0 유지
+    assert np.all(out[:, RIGHT_SLOT_START + 2:WRIST_VEC_START:3] == 0.0)
+    # 한쪽 부재 — wrist_vec z도 0 유지
+    assert np.all(out[:, WRIST_VEC_START + 2] == 0.0)
+    print("[PASS] test_z_jitter_only_touches_z")
+
+
 if __name__ == "__main__":
     test_flip_left_only_becomes_right_only()
     test_flip_wrist_vec_sign()
@@ -141,4 +163,5 @@ if __name__ == "__main__":
     test_noise_masks_flags_and_absent_slots()
     test_time_warp_shape_and_boundaries()
     test_time_warp_restores_absent_slot_invariant()
+    test_z_jitter_only_touches_z()
     print("\nAll tests done.")
