@@ -38,24 +38,33 @@ Raspberry Pi 4B (Raspberry Pi OS Trixie, aarch64) + Pi Camera v1 (OV5647) 환경
 - [x] 비동기 파이프라인 — 인식 직후 카메라 루프 정지 없음
 - [x] `Ctrl+C` 안전 종료
 
+GPU 학습 서버 (`ssh -p 30007 root@cscloud.gpu3.hufs.ac.kr`, RTX 4000 Ada 20GB, CUDA 12.7, Python 3.10, 컨테이너 메모리 제한 24GB):
+
+- [x] 종단 학습 파이프라인 — `scripts/deploy_code.sh` → `upload_dataset.sh`(MP4 제외 tar 스트림) → `server_setup.sh`(TF 2.15.1 GPU) → `run_training.sh`(변환→증강→학습→평가) → `fetch_model.sh`
+- [x] 검증 실행 (2026-06-10, 예시 데이터셋 18단어×3,540샘플, `KSL_LABELS_OVERRIDE` 사용): GPU 학습 ~84 epoch, **TFLite 평가 정확도 0.98**, 추론 0.41ms, `ksl_model.tflite` 740KB (131차원 입력 (1,30,131)→(1,18) 검증 통과). 단 시연자 1명+슬라이딩 윈도우 데이터라 수치는 낙관적 — 파이프라인 동작 검증 목적
+- [ ] 서버 confusion matrix의 한글 라벨이 □로 표시 (matplotlib 한글 폰트 부재 — 기능 무관)
+
 ### 1.3 미완료
 
-- [ ] 데이터 수집: 직접 촬영 + AI Hub 변환 병행 (§1.5 참조)
-- [ ] LSTM 학습: `model/ksl_model.tflite` 미생성
-- [ ] 하드웨어 결선: LCD / 부저 / 스피커 모두 미연결
+- [x] KSL_LABELS 30단어 확정 (2026-06-10) — AI Hub 표제어 기준 재구성, `config/settings.py` 반영 (§1.5 WORD 목록)
+- [ ] 진짜 AI Hub 데이터셋 다운로드 (§1.5의 45개 WORD 패키지) + 서버 학습
+- [ ] LSTM 학습: 운용 `model/ksl_model.tflite` 미생성 (파이프라인은 검증 완료)
+- [ ] 하드웨어 결선: LCD / 부저 / 스피커 / **푸시 버튼 4개**(완료 GPIO5, 페르소나 GPIO6·13·19 — README 결선표) 모두 미연결
 - [ ] Gemini API 키 발급 및 `.env` 등록
 - [ ] 종단 FPS 측정 (목표 ≥20 FPS)
 - [ ] 1차 발표 자료 (Week 4)
 - [ ] 데모 영상·최종 보고서 (Week 6)
 
-### 1.4 입력 차원 정책 (2026-05-16 확정)
+### 1.4 입력 차원 정책 (2026-06-10 개정 — 131차원)
 
 - KSL는 양손 언어이므로 단일 손(63차원) 입력으로는 의미 보존이 불가능.
-- 입력 = **126차원 = [LEFT 21×3 | RIGHT 21×3]**. 각 손은 자신의 손목 기준 정규화.
-- 미감지 손은 zero-pad. 양손 모두 미감지된 프레임은 시퀀스 누락(`extract_landmarks()` None).
-- MediaPipe handedness는 *입력이 거울 모드(selfie)임을 가정* — `main.py`/`collect_data.py`가 `cv2.flip(frame, 1)` 후 호출하므로 'Left' = 사용자의 해부학적 왼손.
-- 한 손 단어(예: "안녕", "주세요" 중 한 손 위주 동작)는 시연자가 자신의 **주손**으로 자연스럽게 수행한다 — 왼손잡이는 LEFT에, 오른손잡이는 RIGHT에 수집된다. `model/augment.py:flip_horizontal`이 LEFT↔RIGHT 블록 swap을 수행하므로 학습 데이터엔 양쪽 분포가 자연스럽게 채워진다. **억지로 비주손 시연을 강요하지 않는다** (부자연스러운 동작이 학습 분포에 들어가는 것을 막기 위함).
-- handedness 신뢰도: `src/hand_tracker.py:HANDEDNESS_SCORE_THRESHOLD = 0.7` 미만의 손은 미감지로 처리. 두 손이 동일 라벨로 분류되는 충돌 케이스는 score 낮은 쪽을 반대편으로 재배정하며 stderr에 warning을 출력한다. Week 2 수집 중 raw score 분포를 보고 임계값을 0.6~0.8 범위에서 재조정 가능.
+- 입력 = **131차원 = [LEFT 21×3 | RIGHT 21×3 | 손목간 벡터 3 | presence flag 2]**. 레이아웃 단일 정의: `src/feature_format.py` (추론 `hand_tracker.py`·변환 `convert_aihub.py`가 공유 — train/serve skew 구조적 차단).
+- 각 손은 손목(landmark 0) 상대좌표를 **intra-hand scale(‖landmark9−landmark0‖)로 나눠** 정규화 — 좌표계 단위(MediaPipe 0~1 vs AI Hub 미터)·카메라 거리·손 크기에 invariant. 이 scale 정규화가 없으면 AI Hub(손목상대 max≈0.09m)와 MediaPipe(max≈0.1~0.35) 분포가 어긋난다(실측).
+- 손목간 벡터 = (우손목−좌손목)/두 손 scale 평균. 양손 단어의 두 손 상대 위치 신호 보존. 한 손이라도 부재면 0.
+- 미감지 손은 zero + presence flag 0. 양손 모두 미감지된 프레임은 시퀀스 누락(`extract_landmarks()` None). 분류기는 연속 `NO_HAND_RESET_FRAMES`(10) 미검출 시 버퍼를 비운다(stale 추론 방지).
+- MediaPipe handedness는 *입력이 거울 모드(selfie)임을 가정* — `main.py`/`collect_data.py`가 `cv2.flip(frame, 1)` 후 호출하므로 'Left' = 사용자의 해부학적 왼손. `extract_landmarks(frame, mirrored=False)`로 호출하면 라벨을 swap한다.
+- 한 손 단어(예: "안녕", "주세요" 중 한 손 위주 동작)는 시연자가 자신의 **주손**으로 자연스럽게 수행한다 — 왼손잡이는 LEFT에, 오른손잡이는 RIGHT에 수집된다. `model/augment.py:flip_horizontal`이 슬롯·flag swap을 수행하므로 학습 데이터엔 양쪽 분포가 자연스럽게 채워진다. 단 flip은 **방향 의존 수어를 제외한 `FLIP_SAFE_LABELS`만 opt-in**. **억지로 비주손 시연을 강요하지 않는다**.
+- handedness 신뢰도: `HANDEDNESS_SCORE_THRESHOLD`(settings.py, 기본 0.7, `.env` 오버라이드) 미만의 손은 라벨 대신 **x좌표 fallback**(거울모드에서 작은 x = 좌손)으로 슬롯 배정. 두 손이 동일 라벨로 분류되는 충돌 케이스는 score 낮은 쪽을 반대편으로 재배정하며 stderr에 warning을 출력한다.
 
 ### 1.5 AI Hub 수어 데이터셋 변환 파이프라인 (2026-05-27)
 
@@ -79,40 +88,47 @@ Raspberry Pi 4B (Raspberry Pi OS Trixie, aarch64) + Pi Camera v1 (OV5647) 환경
 
 변환 시 confidence를 버리고 (x,y,z)만 추출한 뒤 손목 기준 정규화를 적용한다. `hand_tracker.py:_normalize_hand()`와 동일한 로직이다.
 
-**KSL_LABELS 매칭 현황 (3,000개 단어 중):**
+**KSL_LABELS 매칭 현황 (2026-06-10 라벨 전면 개정 후):**
 
-- 정확 매칭: 14개 — 나, 당신, 좋다, 싫다, 맞다, 가다, 오다, 서다, 자다, 배고프다, 목마르다, 아프다, 피곤하다, 완료
-- 어근 매칭: 5개 — 감사합니다(←감사), 먹다(←먹), 행복하다(←행복), 얼마예요(←얼마), 기다리세요(←기다리다)
-- 매칭 없음: 11개 — 안녕, 미안합니다, 반갑습니다, 우리, 네, 아니오, 마시다, 앉다, 도와주세요, 주세요, 화장실
+- 30단어 전부 AI Hub 사전 표제어와 **정확 매칭** (30/30, WORD 패키지 45개).
+- 변환은 반드시 `--exact` 모드 사용 — 어근 매칭은 의미 오염을 유발한다 (실측: "기다리세요"↔"다리", "맞다"↔"뺨맞다", "먹다"↔"얻어먹다"). 이 오염 때문에 먹다·기다리세요는 라벨에서 제외하고 생활명사·감정어로 교체했다.
 
-**현재 보유 키포인트:** WORD1501-1520 (운전면허, 골키퍼 등) — KSL_LABELS와 겹침 없음. 아래 WORD번호에 해당하는 키포인트 패키지를 AI Hub에서 추가 다운로드해야 한다:
+**현재 보유 키포인트:** WORD1501-1520 (운전면허, 골키퍼 등) — 새 KSL_LABELS와 겹침 없음 (파이프라인 검증용으로만 사용됨). 아래 45개 WORD 패키지의 키포인트를 AI Hub에서 다운로드해야 한다:
 
 ```
-WORD0738(좋다)  WORD0742(완료)  WORD0943(가다)  WORD0953(배고프다)
-WORD1148(서다)  WORD1149(오다)  WORD1152(아프다) WORD1157(나)
-WORD1158(피곤하다) WORD1169(행복)  WORD1174(맞다)  WORD1278(싫다)
-WORD1290(감사)  WORD1353(당신)  WORD1377(자다)  WORD2036(목마르다)
+나(1157)  당신(1353)  좋다(0738,1191)  싫다(1278,1385)  맞다(1174,2317,2318)
+가다(0943,0944,0946,1345)  오다(1149)  서다(1148,1344)  자다(1377,1378,1544)
+주다(2394,2395,2396)  배고프다(0953,1197)  목마르다(2036)  아프다(1152)
+피곤하다(1158)  춥다(1248)  덥다(1382)  슬프다(0009)  화나다(1236)
+행복(1169)  감사(1290)  부탁(1589)  돕다(2388,2389,2390)
+밥(1534)  병원(1496)  의사(0163)  엄마(1528)  가족(1492)  친구(1204)
+얼마(0436)  완료(0742)
 ```
 
 **변환 스크립트 사용법:**
 
 ```bash
-# 매칭 현황 확인 (변환 없이 스캔만)
-python convert_aihub.py --dataset /path/to/aihub/dataset --scan
+# 매칭 현황 확인 (변환 없이 스캔만) — --exact 필수 (어근 오염 차단)
+python convert_aihub.py --dataset /path/to/aihub/dataset --scan --exact
 
 # 정면 카메라만 변환 (실 사용 환경과 유사)
-python convert_aihub.py --dataset /path/to/aihub/dataset --angles F
+python convert_aihub.py --dataset /path/to/aihub/dataset --angles F --exact
 
 # 전체 카메라 각도 사용 (데이터 5배, 다양성 확보)
-python convert_aihub.py --dataset /path/to/aihub/dataset
+python convert_aihub.py --dataset /path/to/aihub/dataset --exact
 
 # 슬라이딩 윈도우 stride 조정 (작을수록 샘플 많음)
-python convert_aihub.py --dataset /path/to/aihub/dataset --stride 10
+python convert_aihub.py --dataset /path/to/aihub/dataset --stride 10 --exact
 ```
 
 출력은 `data/landmarks/<단어>/aihub_NNNN.csv`로 저장되며, 기존 직접 촬영 데이터와 동일 디렉터리에 병합된다. `train.py`가 자동으로 인식한다.
 
-**좌표계 차이 주의:** AI Hub는 멀티카메라 3D 복원 좌표(미터 단위), MediaPipe는 0~1 정규화 좌표이다. 손목 기준 상대 좌표 변환으로 스케일 차이를 흡수하지만, 학습 시 직접 촬영 데이터와 혼합 비율을 조절하며 검증 정확도를 모니터링해야 한다.
+**좌표계 차이 — 실측 확정 (2026-06-10):** AI Hub는 멀티카메라 3D 복원 좌표(미터, 비거울), MediaPipe는 0~1 정규화 좌표(거울 영상)이다. `tools/verify_aihub_alignment.py`가 동일 영상의 MP4(런타임 경로)와 키포인트를 프레임별 비교한 결과:
+
+- 필요한 변환 = **x 부호 반전** (`convert_aihub.py:AIHUB_AXIS_SIGNS = (-1, 1, 1)`), 좌우 슬롯 swap 불필요.
+- 변환 적용 후 상관계수 x=0.954, y=0.982, z=0.577 (무변환이면 x=−0.954 — 좌우 반전 데이터로 학습하게 됨).
+- z 상관 0.577은 MediaPipe 단안 추정 z의 한계 — 방향 일치하는 보조 신호로 유효. ToF 카메라 불필요.
+- 스케일 차이는 feature_format의 intra-hand scale 정규화가 흡수. 데이터셋 버전 변경 시 검증 스크립트를 재실행한다.
 
 ---
 
@@ -132,6 +148,12 @@ python convert_aihub.py --dataset /path/to/aihub/dataset --stride 10
 | 2-H | 콘솔에 한글 깨짐 (`?덈뀞`) | PuTTY 기본 인코딩이 UTF-8 아님 | PuTTY → Window → Translation → Remote character set = **UTF-8** |
 | 2-I | 인식 직후 카메라 정지 (1~3초) | Gemini API + LCD I2C + beep이 메인 루프에서 동기 실행 | 워커 스레드로 분리 (`cdb2ac2`) |
 | 2-J | `gh pr edit` title 갱신 안 됨 | GitHub의 Projects(classic) deprecation 경로 충돌 | `gh api -X PATCH /repos/.../pulls/N`으로 직접 호출 |
+| 2-K | 모델이 정확해도 항상 엉뚱한 단어 출력 | sklearn `LabelEncoder`가 라벨을 유니코드 정렬 → 학습 인덱스 ≠ `KSL_LABELS[label_idx]` 역매핑 | LabelEncoder 금지, `train.py:LABEL_TO_IDX` 원본 순서 인코딩 (smoke test가 회귀 가드) |
+| 2-L | TFLite 변환 시 `LLVM ERROR: Failed to infer result type(s)` abort | TF 2.16+(Keras 3)의 LSTM 변환 MLIR 버그 | `tensorflow<2.16` 고정 (2.15.1 검증) |
+| 2-L′ | TFLite 변환 시 `TensorListReserve ... element_shape to be static` 또는 OOM kill(exit 137) | ① dynamic batch에서 LSTM TensorList shape 미확정 ② float16 양자화 패스의 메모리 폭주 (24GB 컨테이너 실측) | ① batch_size=1 고정 모델로 변환(`train.py:convert_and_verify_tflite`) ② float16 양자화 미적용 — 모델이 float32로도 ~740KB |
+| 2-M | `AttributeError: module 'mediapipe' has no attribute 'solutions'` | mediapipe 0.10.30대부터 legacy solutions API 제거 | `mediapipe<0.10.30` 고정 |
+| 2-N | AI Hub 학습 모델이 실 카메라에서 좌우 반전 동작 인식 | AI Hub는 비거울 월드좌표, 런타임은 cv2.flip 거울 영상 | `convert_aihub.py:AIHUB_AXIS_SIGNS=(-1,1,1)` x 반전 (§1.5, 실측 확정) |
+| 2-O | WSL `/mnt/c` 위 venv에서 TF 업/다운그레이드 후 `No module named 'tensorflow.core'` | NTFS에서 pip 파일 교체 잔재 | `uv pip uninstall tensorflow keras` 후 재설치 |
 
 ---
 
@@ -245,6 +267,7 @@ README §🔌 Hardware Connection 참조. 핵심:
 
 - I2C LCD: SDA=GPIO2(Pin 3), SCL=GPIO3(Pin 5), VCC=5V(Pin 2), GND(Pin 6). 주소 `0x27` 기본.
 - 부저: 신호=GPIO17(Pin 11), GND(Pin 9).
+- 푸시 버튼 4개: 완료=GPIO5(Pin 29), 정중=GPIO6(Pin 31), 친근=GPIO13(Pin 33), 간단=GPIO19(Pin 35). 각 버튼은 핀↔GND(Pin 30/34) 사이 연결 — 내부 풀업, 외부 저항 불필요. 완료 버튼이 문장 생성 기본 트리거 (침묵 트리거는 기본 비활성).
 - 스피커: 3.5mm 또는 USB.
 - I2C 활성화: `sudo raspi-config` → Interface Options → I2C → Enable → 재부팅.
 
@@ -327,5 +350,7 @@ README §🔌 Hardware Connection 참조. 핵심:
 
 | 날짜 | 작성자 | 내용 |
 |------|--------|------|
+| 2026-06-10 | 이성준 + Claude (Opus 4.8) | 물리 버튼 4개(완료+페르소나 3) 도입 — src/button_input.py, 침묵 트리거 기본 비활성(SILENCE_TRIGGER_SEC=0), 페르소나 비프 1/2/3회 피드백, 결선도 재생성 |
+| 2026-06-10 | 이성준 + Claude (Opus 4.8) + Codex 리뷰 | 131차원 전환(§1.4), AI Hub 축 변환 실측 확정(§1.5), LabelEncoder 버그 수정, GPU 서버 학습 파이프라인(scripts/) + 서버 E2E 검증, 함정 2-K~2-O 추가 |
 | 2026-05-27 | 이성준 + Claude | §1.1 PR #7-#8 반영, §1.5 AI Hub 데이터셋 변환 파이프라인 추가, §6 convert_aihub.py 등록 |
 | 2026-05-15 | 이성준 + Claude | 초안 작성 (PR #2 진행 중, Week 2 진입 시점, smoke-test 인프라 완성) |

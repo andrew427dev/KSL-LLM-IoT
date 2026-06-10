@@ -23,7 +23,8 @@
 ```
 
 - **인식 단위**: 30프레임(약 1초) 시퀀스 → 한 단어
-- **문장화 트리거**: 단어 "완료" 수행 또는 3초 무동작
+- **문장화 트리거**: **완료 버튼**(GPIO5) 또는 단어 "완료" 수행 (3초 무동작 트리거는 기본 비활성)
+- **문체 선택**: 버튼 3개 — 정중·친근·간단 (비프 1/2/3회로 확인)
 - **신호음**: 단어가 인식될 때마다 부저 짧게 1회
 
 ---
@@ -38,6 +39,7 @@
 | 카메라 | Pi Camera v2 **또는** USB 웹캠 | 자동 감지(`src/main.py:CameraReader`) |
 | I2C LCD | 20×4, 주소 `0x27` 기본 | `LCD_I2C_ADDRESS` 환경변수로 변경 가능 |
 | 부저 | Active 부저 | GPIO17(BCM) 기본 — `BUZZER_PIN` |
+| 푸시 버튼 ×4 | 모멘터리 택트 스위치 | 문장 완료 GPIO5(물리 29) / 정중 GPIO6(31) / 친근 GPIO13(33) / 간단 GPIO19(35). 각 버튼은 핀과 GND(물리 30·34) 사이 연결 — 내부 풀업, 외부 저항 불필요 |
 | 스피커 | 3.5mm 잭 또는 USB | TTS 출력용 |
 | microSD | 32GB 이상 (Class 10) | OS + 모델 + 데이터 |
 | 전원 | 5V/3A USB-C | 카메라+스피커 동시 사용 시 필수 |
@@ -85,10 +87,19 @@ nano .env       # GEMINI_API_KEY 등 채우기
 | `MODEL_PATH` | TFLite 모델 경로 | `model/ksl_model.tflite` |
 | `CONFIDENCE_THRESHOLD` | 단어 확정 임계 신뢰도 (0~1) | `0.85` |
 | `SEQUENCE_LENGTH` | 시퀀스 프레임 수 | `30` |
-| `SILENCE_TRIGGER_SEC` | 무동작 후 문장화 시간(초) | `3.0` |
+| `SILENCE_TRIGGER_SEC` | 무동작 자동 문장화(초). `0` = 비활성 — 완료 버튼이 트리거 담당 | `0` |
 | `LCD_I2C_ADDRESS` | LCD 주소 | `0x27` |
 | `BUZZER_PIN` | 부저 GPIO(BCM) | `17` |
+| `BUTTON_COMPLETE_PIN` | 문장 완료 버튼 GPIO(BCM) | `5` |
+| `BUTTON_PERSONA_POLITE_PIN` | 정중 문체 버튼 GPIO(BCM) | `6` |
+| `BUTTON_PERSONA_FRIENDLY_PIN` | 친근 문체 버튼 GPIO(BCM) | `13` |
+| `BUTTON_PERSONA_BRIEF_PIN` | 간단 문체 버튼 GPIO(BCM) | `19` |
+| `BUTTON_DEBOUNCE_MS` | 버튼 디바운스(ms) | `300` |
 | `CAMERA_INDEX` | OpenCV 카메라 인덱스 | `0` |
+| `HANDEDNESS_SCORE_THRESHOLD` | 좌/우 손 판별 신뢰도 임계값 (미달 시 위치 기반 배정) | `0.7` |
+| `NO_HAND_RESET_FRAMES` | 연속 미검출 시 인식 버퍼 초기화 프레임 수 | `10` |
+| `KSL_LABELS_OVERRIDE` | (학습 실험 전용) 단어 목록 대체 — 운용 시 비움 | (비움) |
+| `SENTENCE_PERSONA` | 문장 생성 문체 — `정중`/`친근`/`간단` | `정중` |
 
 > LCD 주소가 불명확한 경우 `i2cdetect -y 1`로 I2C 버스 상의 장치를 확인한다.
 
@@ -116,19 +127,21 @@ Show your sign...
 2. 등록된 30개 수어 단어 중 하나를 **약 1초간** 수행합니다.
 3. 인식 시 **부저음** + LCD에 단어와 신뢰도가 표시됩니다.
 4. 단어를 이어서 수행하면 버퍼에 누적됩니다.
-5. **"완료" 수어**를 수행하거나 **3초간 가만히** 있으면 Gemini가 자연어 문장을 만들어 LCD/스피커로 출력합니다.
+5. **완료 버튼**(GPIO5)을 누르면 Gemini가 자연어 문장을 만들어 LCD/스피커로 출력한다. "완료" 수어도 동일하게 동작한다. (무동작 자동 문장화는 기본 비활성 — `.env` `SILENCE_TRIGGER_SEC`로 복원 가능)
+6. **문체 버튼** 3개로 출력 문체를 즉시 전환한다 — 정중(비프 1회) / 친근(비프 2회) / 간단(비프 3회). 비프 횟수로 화면을 보지 않아도 적용 문체를 확인할 수 있다. 시작 문체는 `.env` `SENTENCE_PERSONA`. 모니터 연결(GUI) 모드에서는 `SPACE` 키 = 완료, `p` 키 = 문체 순환.
 
 ### 3.3 등록 단어 (총 30개)
 
 | 분류 | 단어 |
 |------|------|
-| 인사 | 안녕, 감사합니다, 미안합니다, 반갑습니다 |
-| 대명사 | 나, 당신, 우리 |
-| 응답 | 네, 아니오, 좋다, 싫다, 맞다 |
-| 동사 | 먹다, 마시다, 가다, 오다, 앉다, 서다, 자다 |
-| 상태 | 배고프다, 목마르다, 아프다, 피곤하다, 행복하다 |
-| 요청 | 도와주세요, 주세요, 기다리세요 |
-| 기타 | 화장실, 얼마예요, **완료**(전송 트리거) |
+| 인칭·응답 | 나, 당신, 좋다, 싫다, 맞다 |
+| 동사 | 가다, 오다, 서다, 자다, 주다 |
+| 상태 | 배고프다, 목마르다, 아프다, 피곤하다, 춥다, 덥다, 슬프다, 화나다 |
+| 감정·의사소통 | 행복, 감사, 부탁, 돕다 |
+| 생활 명사 | 밥, 병원, 의사, 엄마, 가족, 친구, 얼마 |
+| 시스템 | **완료**(전송 트리거) |
+
+단어 목록은 AI Hub 수어 영상 데이터셋의 사전 표제어와 일치한다 (2026-06-10 개정).
 
 > 각 단어의 표준 동작은 [국립국어원 한국수어사전](https://sldict.korean.go.kr) 에서 검색해 참고한다.
 
@@ -263,7 +276,9 @@ PuTTY → Window → Translation → "Remote character set"을 `UTF-8`로 설정
 | `rpicam-vid backend skipped` | 5초 안에 첫 YUV 프레임 못 받음 | 다른 프로세스가 카메라 점유 중인지 확인(`pgrep -a rpicam`), 다른 카메라 앱 종료 후 재실행 |
 | 콘솔에 한글이 `?덈뀞` 처럼 깨짐 | PuTTY 인코딩 미설정 | PuTTY → Window → Translation → Remote character set = **UTF-8** |
 | LCD에 아무것도 안 뜸 | I2C 비활성화 / 주소 다름 | `sudo raspi-config`로 I2C ON, `i2cdetect -y 1` |
-| `RPi.GPIO not available` 메시지 | 비-RPi 환경에서 실행 중 | 정상 — PC 개발 시 부저만 비활성화됨 |
+| `RPi.GPIO not available` 메시지 | 비-RPi 환경에서 실행 중 | 정상 — PC 개발 시 부저·버튼 비활성, GUI 키(`SPACE`/`p`)로 대체 |
+| 버튼을 눌러도 반응 없음 | 배선이 GND 아닌 3.3V/5V에 연결됨 / 핀 번호 불일치 | 버튼은 GPIO핀↔GND 연결(눌림=LOW). `.env`의 `BUTTON_*_PIN`(BCM)과 실제 배선 일치 확인 |
+| 버튼 1회 눌렀는데 여러 번 동작 | 스위치 채터링 | `BUTTON_DEBOUNCE_MS` 증가 (기본 300) |
 | 단어 인식이 자꾸 틀림 | 학습 데이터 부족/편향 | 본인 환경에서 추가 데이터 수집 → 재학습 |
 | Gemini 응답 없음 | API 키 미설정 / 쿼터 초과 | `.env`의 `GEMINI_API_KEY` 확인, 네트워크 점검 |
 | TTS 무음 | 스피커 라우팅 | `raspi-config` → System Options → Audio |
@@ -295,6 +310,10 @@ PuTTY → Window → Translation → "Remote character set"을 `UTF-8`로 설정
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-06-10 | 물리 버튼 4개 도입 (§1.1 결선) — 문장 완료 버튼이 기본 트리거가 되고 무동작 자동 문장화(`SILENCE_TRIGGER_SEC`)는 기본 비활성. 문체 버튼 3개(비프 1/2/3회 피드백) 추가 |
+| 2026-06-10 | 문장 생성 문체(페르소나) 기능 추가 — `.env` `SENTENCE_PERSONA`=정중/친근/간단, GUI 모드 `p` 키 순환 (§2.1, §3.2) |
+| 2026-06-10 | 등록 단어 30개 전면 개정 (§3.3) — AI Hub 데이터셋 표제어 기준. 기존 단어 중 17개 유지, 13개 교체. **이전 단어로 학습된 모델·수집 데이터와 호환되지 않음** |
+| 2026-06-10 | 입력 포맷을 131차원(양손 + 손 크기 정규화 + 손목간 벡터 + presence flag)으로 전환 — **기존 .tflite 모델·수집 CSV는 재학습/재수집 필요**. AI Hub 데이터셋 변환(`convert_aihub.py`)이 동일 포맷으로 출력. `.env` 키 3개 추가(아래 §2.1) |
 | 2026-05-14 | Gemini SDK를 `google-genai`로 마이그레이션 (`google-generativeai`는 EOL). 메인 인식 루프 블로킹 제거 — `SentenceBuilder`의 Gemini 호출, LCD I2C 쓰기, 부저 펄스를 모두 워커 스레드로 분리. 인식 직후 카메라 정지 시간이 사라짐 |
 | 2026-05-14 | `rpicam-vid` 서브프로세스 카메라 백엔드 추가 — Pi Camera v1/v2를 venv에서 잡지 못하던 문제 해소. SSH/PuTTY용 헤드리스 모드(`KSL_HEADLESS=1`) 도입. PuTTY 파일 전송 가이드(§5.1) 추가 |
 | 2026-05-14 | 초기 작성 — 30단어, Gemini 2.5 Flash, 카메라 자동감지 반영 |

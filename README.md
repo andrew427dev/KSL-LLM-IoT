@@ -12,7 +12,10 @@ This project builds a real-time Korean Sign Language (KSL) translation system ru
 
 **Pipeline:**
 ```
-Camera → MediaPipe Hands → LSTM Classifier (TFLite)
+Camera → MediaPipe Hands (2 hands, handedness-aware)
+       → 131-dim feature (wrist-relative + intra-hand scale norm
+                          + wrist-to-wrist vector + presence flags)
+       → LSTM Classifier (TFLite)
        → Word Buffer → Gemini API → TTS + LCD Output
 ```
 
@@ -22,7 +25,7 @@ Camera → MediaPipe Hands → LSTM Classifier (TFLite)
 
 | Category | Technology |
 |----------|-----------|
-| Hardware | Raspberry Pi 4B, Pi Camera (v1 / v2 / Module 3), I2C LCD 20×4, GPIO Buzzer |
+| Hardware | Raspberry Pi 4B, Pi Camera (v1 / v2 / Module 3), I2C LCD 20×4, GPIO Buzzer, Push buttons ×4 (sentence-complete + persona) |
 | Language | Python **3.11** (mediapipe has no aarch64 wheels for Python 3.13 as of this writing) |
 | CV | MediaPipe Hands, OpenCV 4 |
 | AI/ML | TensorFlow (PC training) / `tflite-runtime` (RPi inference) |
@@ -47,9 +50,11 @@ KSL-LLM-IoT/
 │   └── ksl_model.tflite  # Compiled TFLite model (not committed)
 ├── src/
 │   ├── main.py             # Entry point, camera backends (OpenCV / rpicam-vid / picamera2)
-│   ├── hand_tracker.py     # MediaPipe landmark extraction
-│   ├── classifier.py       # TFLite inference (with dummy fallback)
-│   ├── sentence_builder.py # Word buffer + google-genai (with offline fallback)
+│   ├── hand_tracker.py     # MediaPipe → 131-dim feature (handedness slots, x-fallback)
+│   ├── feature_format.py   # Shared 131-dim layout + normalization (train/serve single source)
+│   ├── classifier.py       # TFLite inference (dummy fallback, stale-buffer reset)
+│   ├── sentence_builder.py # Word buffer + google-genai (offline fallback, persona styles)
+│   ├── button_input.py     # Physical buttons (complete + persona ×3, queue-based)
 │   ├── tts_output.py       # gTTS / pyttsx3 voice output (async)
 │   └── lcd_display.py      # I2C LCD controller (async queue)
 ├── config/
@@ -57,8 +62,12 @@ KSL-LLM-IoT/
 ├── docs/
 │   ├── wiring_diagram.png
 │   └── generate_wiring_diagram.py
+├── scripts/                # GPU-server training pipeline (deploy/upload/setup/train/fetch)
+├── tools/
+│   └── verify_aihub_alignment.py  # AI Hub ↔ MediaPipe axis alignment measurement
 ├── tests/
-├── collect_data.py         # Landmark CSV collection (PC)
+├── collect_data.py         # Landmark CSV collection (PC webcam)
+├── convert_aihub.py        # AI Hub keypoint JSON → 131-dim CSV (--exact matching)
 ├── make_dummy_model.py     # Smoke-test dummy TFLite generator
 ├── requirements.txt        # PC: training + dev
 ├── requirements-rpi.txt    # RPi: inference only
@@ -76,15 +85,14 @@ KSL-LLM-IoT/
 
 | Category | Words |
 |----------|-------|
-| Greetings | 안녕, 감사합니다, 미안합니다, 반갑습니다 |
-| Pronouns | 나/저, 당신/너, 우리 |
-| Yes/No | 예/네, 아니오, 좋다, 싫다, 맞다 |
-| Basic Verbs | 먹다, 마시다, 가다, 오다, 앉다, 서다, 자다 |
-| States | 배고프다, 목마르다, 아프다, 피곤하다, 행복하다 |
-| Requests | 도와주세요, 주세요, 기다리세요 |
-| Others | 화장실, 얼마예요, **완료** (transmit trigger) |
+| Pronouns / Response | 나, 당신, 좋다, 싫다, 맞다 |
+| Verbs | 가다, 오다, 서다, 자다, 주다 |
+| States | 배고프다, 목마르다, 아프다, 피곤하다, 춥다, 덥다, 슬프다, 화나다 |
+| Emotion / Intent | 행복, 감사, 부탁, 돕다 |
+| Daily Nouns | 밥, 병원, 의사, 엄마, 가족, 친구, 얼마 |
+| System | **완료** (transmit trigger sign) |
 
-`완료` is the explicit transmit trigger. A 3-second silence after the last recognition also triggers sentence generation.
+The word list matches AI Hub sign-language dataset headwords exactly (revised 2026-06-10; see `convert_aihub.py --exact`). Sentence generation is triggered by the **physical complete button** (GPIO5) or the `완료` sign. Silence-based auto-trigger is disabled by default (`SILENCE_TRIGGER_SEC=0`).
 
 ---
 
@@ -98,6 +106,7 @@ KSL-LLM-IoT/
 | Pi Camera | v1 (OV5647, fixed focus) / v2 (IMX219, fixed focus) / Module 3 (IMX708, autofocus) | CSI ribbon |
 | I2C LCD | 20×4, default address `0x27` | Address override via `LCD_I2C_ADDRESS` in `.env` |
 | Active Buzzer | 3.3V or 5V active type | Pin override via `BUZZER_PIN` in `.env` |
+| Push Buttons ×4 | Momentary tactile switch | Sentence-complete + persona ×3, internal pull-up (no external resistor) |
 | Speaker | 3.5mm jack or USB audio | TTS playback |
 | microSD | 32GB+, Class 10 | OS + dataset + model |
 | Power | 5V / 3A USB-C | Required when camera + speaker run concurrently |
@@ -112,6 +121,10 @@ KSL-LLM-IoT/
 | SCL | GPIO3 | Pin 5 | I2C LCD SCL |
 | Buzzer signal | **GPIO17** (default `BUZZER_PIN`) | Pin 11 | Active buzzer + |
 | Buzzer GND | — | Pin 9 | Active buzzer − |
+| Complete button | **GPIO5** (`BUTTON_COMPLETE_PIN`) | Pin 29 | Button leg A (leg B → GND Pin 30) |
+| Persona: polite | **GPIO6** (`BUTTON_PERSONA_POLITE_PIN`) | Pin 31 | Button leg A (leg B → GND Pin 30) |
+| Persona: friendly | **GPIO13** (`BUTTON_PERSONA_FRIENDLY_PIN`) | Pin 33 | Button leg A (leg B → GND Pin 34) |
+| Persona: brief | **GPIO19** (`BUTTON_PERSONA_BRIEF_PIN`) | Pin 35 | Button leg A (leg B → GND Pin 34) |
 | Camera | — | CSI port | Pi Camera ribbon |
 | Audio | — | 3.5mm jack or USB | Speaker |
 
