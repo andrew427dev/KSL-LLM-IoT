@@ -1,19 +1,19 @@
-# HANDOFF — 2026-05-27
+# HANDOFF — 2026-06-11
 
 본 문서는 KSL-LLM-IoT 프로젝트 작업을 이어받는 팀원·차기 세션이 *현재 상태와 다음 단계*를 파악하기 위해 작성된다. 매번의 작업 마무리 시 갱신한다.
 
-- 작성 시점: **2026-05-27** (Week 4 진입)
-- 작성자: 이성준 + Claude (Opus 4.7)
+- 작성 시점: **2026-06-11** (Week 6 — 최종 제출 6/22)
+- 작성자: 이성준 + Claude (Opus 4.8)
 - 대상: 배진규(팀원), 이후 본인, 차기 세션
 
 ---
 
-## 1. 현재 상태 (2026-05-27 기준)
+## 1. 현재 상태 (2026-06-11 기준)
 
 ### 1.1 코드
 
 - 기본 브랜치: `main` (보호) ← `develop` ← feature 브랜치 (GitFlow 변형)
-- **현재 작업 브랜치: `develop`** (HEAD: `d3ce0c0`)
+- **현재 작업 브랜치: `feat/131-feature-format`** — **PR #9 OPEN** (develop 대상, CI 그린, 머지 대기). 131차원 전환·서버 학습 파이프라인·물리 버튼·페르소나·시간 리샘플링 등 이번 사이클 전체가 이 PR에 있다.
 - 머지 완료 PR:
 
   | PR | 브랜치 | 내용 |
@@ -44,16 +44,26 @@ GPU 학습 서버 (`ssh -p 30007 root@cscloud.gpu3.hufs.ac.kr`, RTX 4000 Ada 20G
 - [x] 검증 실행 (2026-06-10, 예시 데이터셋 18단어×3,540샘플, `KSL_LABELS_OVERRIDE` 사용): GPU 학습 ~84 epoch, **TFLite 평가 정확도 0.98**, 추론 0.41ms, `ksl_model.tflite` 740KB (131차원 입력 (1,30,131)→(1,18) 검증 통과). 단 시연자 1명+슬라이딩 윈도우 데이터라 수치는 낙관적 — 파이프라인 동작 검증 목적
 - [ ] 서버 confusion matrix의 한글 라벨이 □로 표시 (matplotlib 한글 폰트 부재 — 기능 무관)
 
+RPi 실기 통합 (2026-06-10/11, USB 웹캠 + 운용 모델):
+
+- [x] SSH 직접 운용: `ssh rpi` (~/.ssh/config, IP는 DHCP — ARP에서 MAC `d8-3a-dd` 검색으로 재발견)
+- [x] USB 웹캠(OpenCV 백엔드, 카메라 단독 30FPS) / USB 전원 스피커(3.5mm) / LCD / 부저 / **물리 버튼 4개 결선·동작**
+- [x] 운용 모델(30클래스) 실기 가동 — 종단 경로 실증: 카메라→인식→Gemini(실호출)→TTS(한국어)+LCD(영어)
+- [x] 출력 이중화: 음성=한국어, LCD·GUI=영어 (LCD 한글 미지원)
+- [x] tmux 세션 운용 (`tmux new -d -s ksl ...` — nohup은 와이파이 끊김에 취약)
+- [x] 진단 도구 `tools/diagnose_live.py` — top-3·검출률·VNC 미리보기
+- [ ] **실기 인식률 미달** — 진단: MediaPipe 추론 8-9.5FPS(병목), 시간 리샘플링으로 창 정합했으나 모델 과신(전 예측 ~1.00)·도메인 갭 잔존 → 16명 재학습 진행 중 (§4)
+
 ### 1.3 미완료
 
 - [x] KSL_LABELS 30단어 확정 (2026-06-10) — AI Hub 표제어 기준 재구성, `config/settings.py` 반영 (§1.5 WORD 목록)
-- [ ] 진짜 AI Hub 데이터셋 다운로드 (§1.5의 45개 WORD 패키지) + 서버 학습
-- [ ] LSTM 학습: 운용 `model/ksl_model.tflite` 미생성 (파이프라인은 검증 완료)
-- [ ] 하드웨어 결선: LCD / 부저 / 스피커 / **푸시 버튼 4개**(완료 GPIO5, 페르소나 GPIO6·13·19 — README 결선표) 모두 미연결
-- [ ] Gemini API 키 발급 및 `.env` 등록
-- [ ] 종단 FPS 측정 (목표 ≥20 FPS)
-- [ ] 1차 발표 자료 (Week 4)
-- [ ] 데모 영상·최종 보고서 (Week 6)
+- [x] AI Hub 데이터셋: 서버 직접 다운로드 (`scripts/server_download_aihub.sh`, aihubshell) — 시연자 3명분으로 1차 운용 모델 학습 완료(전수 0.95). **시연자 16명 + label smoothing + z_jitter 재학습 진행 중** (자동 체인)
+- [x] 하드웨어 결선 전부 완료 (LCD/부저/스피커/버튼 4개/USB 웹캠)
+- [x] Gemini API 키 등록 (RPi .env) — 실호출 검증
+- [ ] **실기 인식률 확보** — 16명 재학습 결과로 판단. 미달 시 본인 데이터 수집 혼합(collect_data를 시간 리샘플 방식으로 수정 필요 — 미착수)
+- [ ] PR #9 머지 → develop → main 릴리스
+- [ ] 데모 영상 (`docs/final_report_outline.md` 샷 리스트) · 최종 보고서(PDF ≥10p) · PPT(영어 ≥15슬라이드) — 아웃라인 docs/에 완비
+- [ ] AI Hub API 키 파일: 서버 `/mnt/data/ksl/.aihub_key` (비밀 — 커밋 금지)
 
 ### 1.4 입력 차원 정책 (2026-06-10 개정 — 131차원)
 
@@ -62,6 +72,7 @@ GPU 학습 서버 (`ssh -p 30007 root@cscloud.gpu3.hufs.ac.kr`, RTX 4000 Ada 20G
 - 각 손은 손목(landmark 0) 상대좌표를 **intra-hand scale(‖landmark9−landmark0‖)로 나눠** 정규화 — 좌표계 단위(MediaPipe 0~1 vs AI Hub 미터)·카메라 거리·손 크기에 invariant. 이 scale 정규화가 없으면 AI Hub(손목상대 max≈0.09m)와 MediaPipe(max≈0.1~0.35) 분포가 어긋난다(실측).
 - 손목간 벡터 = (우손목−좌손목)/두 손 scale 평균. 양손 단어의 두 손 상대 위치 신호 보존. 한 손이라도 부재면 0.
 - 미감지 손은 zero + presence flag 0. 양손 모두 미감지된 프레임은 시퀀스 누락(`extract_landmarks()` None). 분류기는 연속 `NO_HAND_RESET_FRAMES`(10) 미검출 시 버퍼를 비운다(stale 추론 방지).
+- **시간 정규화 (2026-06-11)**: 런타임 FPS는 환경 의존(RPi 4B + MediaPipe 실측 8-9.5FPS — 추론이 병목, 카메라는 30FPS). 분류기는 (timestamp, vector) 버퍼에서 **최근 1.0초(`SEQUENCE_LENGTH/TRAIN_FPS`)를 30포인트로 선형 보간**해 학습 분포(30fps 영상)와 시간 창을 정합한다 (`src/classifier.py:_resample_window`). 프레임 수 기반 버퍼는 저FPS에서 1초 동작을 ~4초 창으로 왜곡 — 실기 인식 실패의 1차 원인이었다.
 - MediaPipe handedness는 *입력이 거울 모드(selfie)임을 가정* — `main.py`/`collect_data.py`가 `cv2.flip(frame, 1)` 후 호출하므로 'Left' = 사용자의 해부학적 왼손. `extract_landmarks(frame, mirrored=False)`로 호출하면 라벨을 swap한다.
 - 한 손 단어(예: "안녕", "주세요" 중 한 손 위주 동작)는 시연자가 자신의 **주손**으로 자연스럽게 수행한다 — 왼손잡이는 LEFT에, 오른손잡이는 RIGHT에 수집된다. `model/augment.py:flip_horizontal`이 슬롯·flag swap을 수행하므로 학습 데이터엔 양쪽 분포가 자연스럽게 채워진다. 단 flip은 **방향 의존 수어를 제외한 `FLIP_SAFE_LABELS`만 opt-in**. **억지로 비주손 시연을 강요하지 않는다**.
 - handedness 신뢰도: `HANDEDNESS_SCORE_THRESHOLD`(settings.py, 기본 0.7, `.env` 오버라이드) 미만의 손은 라벨 대신 **x좌표 fallback**(거울모드에서 작은 x = 좌손)으로 슬롯 배정. 두 손이 동일 라벨로 분류되는 충돌 케이스는 score 낮은 쪽을 반대편으로 재배정하며 stderr에 warning을 출력한다.
@@ -156,6 +167,9 @@ python convert_aihub.py --dataset /path/to/aihub/dataset --stride 10 --exact
 | 2-O | WSL `/mnt/c` 위 venv에서 TF 업/다운그레이드 후 `No module named 'tensorflow.core'` | NTFS에서 pip 파일 교체 잔재 | `uv pip uninstall tensorflow keras` 후 재설치 |
 | 2-P | `RPi.GPIO add_event_detect` → `RuntimeError: Failed to add edge detection` (RPi 실기) | 레거시 sysfs 이벤트가 Trixie의 libgpiod 커널과 충돌 | 이벤트 디텍트 사용 금지 — `src/button_input.py`는 메인 루프 폴링(에지+디바운스 자체 구현)으로 동작 |
 | 2-Q | 3.5mm 스피커에서 재생 무관 "툭툭" 잡음 | 증폭 스피커의 USB 전원을 RPi에서 공급 → 5V 부하 리플 증폭 (스피커 전원 분리로 실측 확정) | 스피커 전원은 별도 어댑터. PWM 음질은 `audio_pwm_mode=2`+`disable_audio_dither=1` (적용됨) |
+| 2-R | 실기에서 모델이 자신 있게(~1.00) 엉뚱한 단어만 출력 | ① 저FPS(8-9.5)로 30프레임 버퍼가 1초 동작을 ~4초 창으로 왜곡 ② 시연자 3명 과적합의 병적 과신 | ① 시간 리샘플링(§1.4) ② label smoothing 0.1 + z_jitter 증강 + 시연자 16명 (재학습 중) |
+| 2-S | aihubshell: zip이 최상위가 아닌 `004.수어영상/...` 하위에 저장, 컨테이너에 unzip·curl 없음 | 기본 이미지 미포함 + 데이터셋 트리 경로 보존 | `apt-get install unzip curl`, zip 탐색은 find 기반 (`server_download_aihub.sh` 사전 점검 포함) |
+| 2-T | ssh로 RPi 원격 명령이 간헐 무출력 exit 255 | nohup & 백그라운드 + 와이파이 절전/전환 | 장기 실행은 `tmux new -d -s <name> "..."`로 분리, 실행과 확인을 별도 ssh로 |
 
 ---
 
@@ -229,74 +243,44 @@ KSL_HEADLESS=1 python src/main.py
 
 ---
 
-## 4. 다음 작업
+## 4. 다음 작업 (2026-06-11 기준, 마감 6/22)
 
-### 4.1 Week 2 (5/14~5/21) — 데이터 수집
+### 4.1 즉시 (자동 진행 중 — 확인만)
 
-위치: PC + 웹캠.
-
-```bash
-python collect_data.py --word 안녕 --samples 100
-# SPACE = 녹화 토글, q = 종료
-# 출력: data/landmarks/<단어>/0000.csv ...
-```
-
-- 30단어 전체에 대해 반복. `config/settings.py:KSL_LABELS` 참조.
-- 단어당 100샘플 미만이면 학습 일반화 부족 위험. 가능하면 단어당 150~200샘플.
-- 조명·각도·배경을 변경하며 수집.
-- 카메라 거리 40~80cm.
-- 분담안 예시: 이성준 15단어, 배진규 15단어. 분담은 팀 회의에서 확정.
-
-### 4.2 Week 3 (5/21~5/28) — 학습
-
-위치: PC.
+GPU 서버에서 시연자 16명 다운로드(+13명, ~2.5h) → 자동 체인: 해제 → git pull(label smoothing·z_jitter 반영) → 변환(--exact) → 증강 → 학습 → 평가. 완료 후:
 
 ```bash
-python model/augment.py --factor 3      # 선택
-python model/train.py                   # → model/ksl_model.tflite
-python model/evaluate.py                # 정확도 확인
+# 결과 확인
+ssh -p 30007 root@cscloud.gpu3.hufs.ac.kr 'grep -E "Chain3|Test Accuracy" /mnt/data/ksl/training.log | tail -3'
+# 모델 회수 → RPi 배포
+bash scripts/fetch_model.sh /tmp/m && scp /tmp/m/ksl_model.tflite rpi:Desktop/KSL-LLM-IoT/model/
+# RPi 재진단 (VNC 미리보기 포함)
+ssh rpi 'cd ~/Desktop/KSL-LLM-IoT && tmux kill-session -t diag 2>/dev/null; tmux new -d -s diag "DISPLAY=:0 .venv/bin/python tools/diagnose_live.py 300 > /tmp/ksl_diag.log 2>&1"'
 ```
 
-목표: 단어 인식 정확도 ≥85%. 미달 시 추가 데이터 수집 후 재학습.
+판정: top-3에 수행 단어가 들어오고 확신 분포가 정상화(0.3~0.9 분포)되면 데모 시나리오 확정. 미달이면 4.2.
 
-생성된 `.tflite`를 RPi로 전송 (`pscp` 또는 git LFS, USER_MANUAL §5.1).
+### 4.2 (조건부) 본인 데이터 혼합
 
-### 4.3 하드웨어 결선 (병렬 가능)
+1. `collect_data.py`를 classifier와 동일한 시간 리샘플 방식으로 수정 (미착수 — 현재 버전은 저FPS에서 시간 왜곡 데이터 저장)
+2. RPi+VNC로 30단어 × 20~30샘플 수집 (~1.5h) → `scripts/upload_dataset.sh`형태로 서버 전송 → AI Hub와 혼합 재학습
+3. 근거: 데모 화자가 학습에 포함 — 6/22 "works correctly" 채점 기준에 가장 확실
 
-위치: RPi 본체. 코드 변경 불필요.
+### 4.3 시스템 운용 (RPi)
 
-README §🔌 Hardware Connection 참조. 핵심:
+```bash
+ssh rpi
+tmux new -d -s ksl "cd ~/Desktop/KSL-LLM-IoT && DISPLAY=:0 KSL_HEADLESS=0 .venv/bin/python src/main.py > /tmp/ksl_gui.log 2>&1"
+# 종료: tmux kill-session -t ksl / 로그: tail -f /tmp/ksl_gui.log
+```
 
-- I2C LCD: SDA=GPIO2(Pin 3), SCL=GPIO3(Pin 5), VCC=5V(Pin 2), GND(Pin 6). 주소 `0x27` 기본.
-- 부저: 신호=GPIO17(Pin 11), GND(Pin 9).
-- 푸시 버튼 4개: 완료=GPIO5(Pin 29), 정중=GPIO6(Pin 31), 친근=GPIO13(Pin 33), 간단=GPIO19(Pin 35). 각 버튼은 핀↔GND(Pin 30/34) 사이 연결 — 내부 풀업, 외부 저항 불필요. 완료 버튼이 문장 생성 기본 트리거 (침묵 트리거는 기본 비활성).
-- 스피커: 3.5mm 또는 USB.
-- I2C 활성화: `sudo raspi-config` → Interface Options → I2C → Enable → 재부팅.
+- 스피커는 별도 USB 전원 필수 (함정 2-Q)
+- IP 변경 시: Windows에서 `arp -a | findstr d8-3a-dd` → ~/.ssh/config HostName 갱신
 
-검증: `i2cdetect -y 1`로 LCD 주소 표시되면 OK.
+### 4.4 제출물 (6/22)
 
-### 4.4 Week 4 (5/28~6/1) — 통합 + 1차 발표
-
-- 실제 모델 + 하드웨어로 종단 테스트.
-- FPS 측정 (목표 ≥20 on RPi 4B).
-- 1차 발표 자료 작성.
-
-### 4.5 Week 5 (6/1~6/10) — Gemini API
-
-- https://aistudio.google.com 에서 API 키 발급 (무료 티어로 본 프로젝트 사용량 충당).
-- RPi `.env`에 `GEMINI_API_KEY=AIza...` 입력 (인용부호 없이).
-- 재실행 시 오프라인 모드 안내 메시지가 사라지고 LLM 경로로 전환.
-- 시스템 프롬프트 튜닝(`config/settings.py:GEMINI_SYSTEM_PROMPT`)으로 출력 톤 조정.
-- 응답 지연 ≤4초 측정.
-
-### 4.6 Week 6 (6/10~6/22) — 데모 + 보고서
-
-- 데모 영상 (인사·동사·요청 시나리오 각 1개 이상).
-- 최종 보고서 (구조·결과·한계·향후 개선).
-- 발표 자료.
-- main 브랜치 안정화, README·USER_MANUAL §9 changelog 최신화.
-
----
+- 데모 영상·보고서·PPT 아웃라인: `docs/final_report_outline.md`, `docs/presentation_outline.md` — [TBD] 수치만 채우면 집필 가능
+- PR #9 머지 → develop→main 릴리스 → zip 패키징 (`IoT_YourName_StudentID_TermProject.rar`)
 
 ## 5. 책임 분담 (현재 기록)
 
@@ -352,6 +336,7 @@ README §🔌 Hardware Connection 참조. 핵심:
 
 | 날짜 | 작성자 | 내용 |
 |------|--------|------|
+| 2026-06-11 | 이성준 + Claude (Opus 4.8) | 전면 개정 — RPi 실기 통합(§1.2), 시간 리샘플링(§1.4), 실기 진단·과신 대응(§2 2-R~2-T), §4를 현 시점 크리티컬 패스로 교체 |
 | 2026-06-10 | 이성준 + Claude (Opus 4.8) | 출력 이중화: Gemini가 (한국어, 영어) 두 줄 생성 — TTS=한국어/LCD·GUI=영어(KSL_LABELS_EN), LCD ASCII 안전망. 운용 모델(30클래스, 전수 0.95) 서버 학습·RPi 배포 완료 |
 | 2026-06-10 | 이성준 + Claude (Opus 4.8) | 물리 버튼 4개(완료+페르소나 3) 도입 — src/button_input.py, 침묵 트리거 기본 비활성(SILENCE_TRIGGER_SEC=0), 페르소나 비프 1/2/3회 피드백, 결선도 재생성 |
 | 2026-06-10 | 이성준 + Claude (Opus 4.8) + Codex 리뷰 | 131차원 전환(§1.4), AI Hub 축 변환 실측 확정(§1.5), LabelEncoder 버그 수정, GPU 서버 학습 파이프라인(scripts/) + 서버 E2E 검증, 함정 2-K~2-O 추가 |
