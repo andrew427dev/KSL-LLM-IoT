@@ -280,6 +280,7 @@ PuTTY → Window → Translation → "Remote character set"을 `UTF-8`로 설정
 | `RPi.GPIO not available` 메시지 | 비-RPi 환경에서 실행 중 | 정상 — PC 개발 시 부저·버튼 비활성, GUI 키(`SPACE`/`p`)로 대체 |
 | 버튼을 눌러도 반응 없음 | 배선이 GND 아닌 3.3V/5V에 연결됨 / 핀 번호 불일치 | 버튼은 GPIO핀↔GND 연결(눌림=LOW). `.env`의 `BUTTON_*_PIN`(BCM)과 실제 배선 일치 확인 |
 | 버튼 1회 눌렀는데 여러 번 동작 | 스위치 채터링 | `BUTTON_DEBOUNCE_MS` 증가 (기본 300) |
+| 스피커에서 재생과 무관하게 "툭툭"·웅웅 잡음 | 증폭 스피커가 RPi USB 5V의 부하 리플을 증폭 (전원 리플, 실측 확인) | 스피커 USB 전원을 RPi가 아닌 **별도 충전기/보조배터리**에 연결. 배경 "쉬-" 잡음은 `config.txt`의 `audio_pwm_mode=2`, `disable_audio_dither=1`로 완화 |
 | 단어 인식이 자꾸 틀림 | 학습 데이터 부족/편향 | 본인 환경에서 추가 데이터 수집 → 재학습 |
 | Gemini 응답 없음 | API 키 미설정 / 쿼터 초과 | `.env`의 `GEMINI_API_KEY` 확인, 네트워크 점검 |
 | TTS 무음 | 스피커 라우팅 | `raspi-config` → System Options → Audio |

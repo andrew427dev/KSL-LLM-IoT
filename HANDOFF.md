@@ -155,6 +155,7 @@ python convert_aihub.py --dataset /path/to/aihub/dataset --stride 10 --exact
 | 2-N | AI Hub 학습 모델이 실 카메라에서 좌우 반전 동작 인식 | AI Hub는 비거울 월드좌표, 런타임은 cv2.flip 거울 영상 | `convert_aihub.py:AIHUB_AXIS_SIGNS=(-1,1,1)` x 반전 (§1.5, 실측 확정) |
 | 2-O | WSL `/mnt/c` 위 venv에서 TF 업/다운그레이드 후 `No module named 'tensorflow.core'` | NTFS에서 pip 파일 교체 잔재 | `uv pip uninstall tensorflow keras` 후 재설치 |
 | 2-P | `RPi.GPIO add_event_detect` → `RuntimeError: Failed to add edge detection` (RPi 실기) | 레거시 sysfs 이벤트가 Trixie의 libgpiod 커널과 충돌 | 이벤트 디텍트 사용 금지 — `src/button_input.py`는 메인 루프 폴링(에지+디바운스 자체 구현)으로 동작 |
+| 2-Q | 3.5mm 스피커에서 재생 무관 "툭툭" 잡음 | 증폭 스피커의 USB 전원을 RPi에서 공급 → 5V 부하 리플 증폭 (스피커 전원 분리로 실측 확정) | 스피커 전원은 별도 어댑터. PWM 음질은 `audio_pwm_mode=2`+`disable_audio_dither=1` (적용됨) |
 
 ---
 
