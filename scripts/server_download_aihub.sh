@@ -53,22 +53,15 @@ for i in $(seq 1 "$N_SIGNERS"); do
     df -h / | tail -1
     aihubshell -mode d -datasetkey 103 -filekey "$fk" -aihubapikey "$KEY"
 
-    # 분할(part) 파일이면 병합
-    for p in *.zip.part0; do
-        [ -e "$p" ] || continue
-        base="${p%.part0}"
-        cat "${base}".part* > "$base" && rm -f "${base}".part*
-    done
-
-    # 필요한 WORD 디렉터리만 선택 해제
-    for z in *.zip; do
-        [ -e "$z" ] || continue
-        echo "  [시연자 $i] $z 에서 45개 WORD 선택 해제..."
+    # aihubshell은 zip을 데이터셋 트리 경로(004.수어영상/...) 하위에 받고
+    # 분할(part) 파일은 자동 병합한다 — find로 깊이 무관하게 탐색한다.
+    while IFS= read -r -d "" z; do
+        echo "  [시연자 $i] $(basename "$z") 에서 45개 WORD 선택 해제..."
         for w in $WORDS; do
             unzip -o -q "$z" "*WORD${w}_*" -d "$DEST/라벨링데이터/REAL/WORD" 2>/dev/null || true
         done
         rm -f "$z"
-    done
+    done < <(find "$WORK" -name "*keypoint*.zip" -print0)
     touch "$marker"
     echo "  [시연자 $i] 완료. 누적 키포인트 디렉터리: $(find "$DEST/라벨링데이터" -maxdepth 4 -type d -name "NIA_SL_WORD*" | wc -l)개"
 done
