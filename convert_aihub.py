@@ -1,14 +1,17 @@
 """
 convert_aihub.py
 AI Hub 수어 영상 데이터셋의 3D 키포인트 JSON을
-프로젝트 CSV 포맷(30프레임 × 126차원)으로 변환한다.
+프로젝트 CSV 포맷(30프레임 × 131차원)으로 변환한다.
 
 변환 흐름:
   1. 형태소 JSON에서 WORD번호 → 한국어 단어 매핑 구축
   2. KSL_LABELS에 해당하는 WORD번호 필터링
-  3. 키포인트 JSON에서 hand_left/right_keypoints_3d 추출
-  4. 손목 기준 정규화 → [LEFT_63 | RIGHT_63] = 126차원
-  5. 슬라이딩 윈도우로 30프레임 시퀀스 생성 → CSV 저장
+  3. 키포인트 JSON에서 hand_left/right_keypoints_3d 추출 (절대좌표, 미터 단위)
+  4. 축 변환(AIHUB_AXIS_SIGNS/AIHUB_SWAP_LR — 실측 확정값) 적용 후
+     src/feature_format.build_feature_vector로 131차원 조립
+     (손목 상대 + intra-hand scale 정규화 → 런타임 MediaPipe 표현과 동일)
+  5. 양손 모두 부재한 프레임은 시퀀스에서 제외 (런타임의 None-skip과 일치)
+  6. 슬라이딩 윈도우로 30프레임 시퀀스 생성 → CSV 저장
 
 Usage:
     python convert_aihub.py --dataset /path/to/aihub
@@ -25,13 +28,17 @@ import numpy as np
 import sys
 
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-from config.settings import KSL_LABELS, SEQUENCE_LENGTH, NUM_LANDMARKS, NUM_AXES
+from config.settings import KSL_LABELS, SEQUENCE_LENGTH, NUM_LANDMARKS, FEATURE_DIM
+from src.feature_format import build_feature_vector
 
-PER_HAND_DIM = NUM_LANDMARKS * NUM_AXES  # 63
-FRAME_DIM = PER_HAND_DIM * 2  # 126
-
-# 양손 모두 zero인 프레임이 시퀀스의 절반 이상이면 해당 샘플은 폐기
-MIN_NONZERO_RATIO = 0.5
+# ── AI Hub 좌표계 → 런타임 MediaPipe 표현 변환 ────────────────
+# tools/verify_aihub_alignment.py가 동일 영상의 MP4(런타임 경로)와 키포인트를
+# 프레임별 비교해 실측 확정한 값 (2026-06-10, REAL01 F영상 3개, 쌍 725개):
+#   x 반전 = AI Hub는 비거울 월드좌표, 런타임은 cv2.flip 거울 영상이기 때문.
+#   상관계수 x=0.954, y=0.982, z=0.577 (무변환이면 x=-0.954로 정반대).
+# 데이터셋 버전이 바뀌면 재실행해 검증할 것.
+AIHUB_AXIS_SIGNS = np.array([-1.0, 1.0, 1.0], dtype=np.float32)  # (x, y, z) 부호
+AIHUB_SWAP_LR = False  # hand_left/right 키와 LEFT/RIGHT 슬롯 대응 교차 여부
 
 
 # ── 1단계: WORD번호 → 한국어 단어 매핑 ────────────────────────
@@ -39,7 +46,6 @@ MIN_NONZERO_RATIO = 0.5
 def build_word_mapping(dataset_root):
     """형태소 JSON에서 WORD번호 → 한국어 단어 매핑을 구축한다."""
     mapping = {}
-    count = 0
     for root, _dirs, files in os.walk(dataset_root):
         for f in files:
             if not f.endswith("_morpheme.json"):
@@ -59,7 +65,6 @@ def build_word_mapping(dataset_root):
                         name = attr.get("name", "").strip()
                         if name:
                             mapping[word_num] = name
-                            count += 1
                             break
                     if word_num in mapping:
                         break
@@ -71,9 +76,14 @@ def build_word_mapping(dataset_root):
 
 # ── 2단계: KSL_LABELS 매칭 ────────────────────────────────────
 
-def match_labels(word_mapping, labels):
+def match_labels(word_mapping, labels, exact_only=False):
     """KSL_LABELS와 매칭되는 WORD번호를 찾는다.
     정확 매칭 우선, 어근 매칭(한쪽이 다른 쪽에 포함) 보조.
+
+    exact_only=True면 어근 매칭을 끈다 — 어근 매칭은 의미가 다른 수어를
+    끌어들일 수 있다 (실측: "기다리세요"↔"다리", "맞다"↔"뺨맞다",
+    "먹다"↔"얻어먹다"). 라벨을 사전 표제어와 일치시키고 정확 매칭만
+    사용하는 것이 안전하다.
     Returns: {label: [word_num, ...]}
     """
     # 역매핑: 한국어 단어 → WORD번호 리스트
@@ -89,7 +99,7 @@ def match_labels(word_mapping, labels):
             nums.extend(korean_to_nums[label])
         # 어근 매칭: "감사합니다" ↔ "감사", "행복하다" ↔ "행복"
         # 양쪽 모두 2글자 이상이어야 오매칭 방지 ("나" ⊂ "낚시" 같은 케이스 차단)
-        if len(label) >= 2:
+        if not exact_only and len(label) >= 2:
             for korean_word, wnums in korean_to_nums.items():
                 if korean_word == label:
                     continue
@@ -118,29 +128,29 @@ def find_keypoint_dirs(dataset_root):
 # ── 4단계: 프레임 변환 핵심 로직 ──────────────────────────────
 
 def extract_hand_3d(people, hand_key):
-    """3D 키포인트에서 (x,y,z) 추출 후 손목 기준 정규화.
+    """3D 키포인트에서 (x,y,z) 절대좌표를 추출한다.
     AI Hub 포맷: 21 joints × 4 (x, y, z, confidence) = 84개 값.
-    Returns: 63차원 벡터 (21 × 3). 데이터 없으면 zero 벡터.
+    Returns: (21, 3) ndarray 또는 None(데이터 없음).
+    정규화는 하지 않는다 — feature_format.build_feature_vector가 수행.
     """
     kp = people.get(hand_key, [])
     if not kp or len(kp) < NUM_LANDMARKS * 4:
-        return np.zeros(PER_HAND_DIM, dtype=np.float32)
+        return None
 
     coords = np.array(
         [[kp[i * 4], kp[i * 4 + 1], kp[i * 4 + 2]] for i in range(NUM_LANDMARKS)],
         dtype=np.float32,
     )  # (21, 3)
-
-    # 손목(joint 0) 기준 상대 좌표 — hand_tracker.py:_normalize_hand()와 동일 로직
-    wrist = coords[0].copy()
-    coords -= wrist
-
-    return coords.flatten()
+    if not np.any(coords):
+        return None  # 전부 0 = 미검출 마킹
+    return coords
 
 
 def load_sequence_frames(kp_dir):
-    """한 시퀀스 디렉터리의 전체 프레임을 로드한다.
-    Returns: (N, 126) ndarray 또는 None.
+    """한 시퀀스 디렉터리의 전체 프레임을 131차원 벡터로 변환한다.
+    양손 모두 부재한 프레임은 제외 — 런타임 extract_landmarks()의
+    None-skip과 동일한 시퀀스 구성을 보장한다.
+    Returns: (N, FEATURE_DIM) ndarray 또는 None.
     """
     json_files = sorted(glob.glob(os.path.join(kp_dir, "*_keypoints.json")))
     if not json_files:
@@ -157,7 +167,18 @@ def load_sequence_frames(kp_dir):
         people = data.get("people", {})
         left = extract_hand_3d(people, "hand_left_keypoints_3d")
         right = extract_hand_3d(people, "hand_right_keypoints_3d")
-        frames.append(np.concatenate([left, right]))
+
+        # 실측 확정된 축 변환 적용 (부호 반전은 손목 상대화·scale에 불변)
+        if left is not None:
+            left = left * AIHUB_AXIS_SIGNS
+        if right is not None:
+            right = right * AIHUB_AXIS_SIGNS
+        if AIHUB_SWAP_LR:
+            left, right = right, left
+
+        vec = build_feature_vector(left, right)
+        if vec is not None:
+            frames.append(vec)
 
     if not frames:
         return None
@@ -165,22 +186,20 @@ def load_sequence_frames(kp_dir):
 
 
 def make_samples(sequence, window_size, stride):
-    """슬라이딩 윈도우로 (window_size, 126) 샘플들을 생성한다."""
+    """슬라이딩 윈도우로 (window_size, FEATURE_DIM) 샘플들을 생성한다.
+    입력 시퀀스는 이미 양손 부재 프레임이 제거된 상태다."""
     samples = []
     for start in range(0, len(sequence) - window_size + 1, stride):
-        window = sequence[start : start + window_size]
-        nonzero = np.count_nonzero(window.sum(axis=1)) / window_size
-        if nonzero >= MIN_NONZERO_RATIO:
-            samples.append(window)
+        samples.append(sequence[start : start + window_size])
     return samples
 
 
 # ── 메인 변환 ─────────────────────────────────────────────────
 
-def scan_only(dataset_root, labels):
+def scan_only(dataset_root, labels, exact_only=False):
     """매칭 현황만 출력하고 종료한다."""
     word_mapping = build_word_mapping(dataset_root)
-    label_matches = match_labels(word_mapping, labels)
+    label_matches = match_labels(word_mapping, labels, exact_only=exact_only)
     kp_dirs = find_keypoint_dirs(dataset_root)
 
     print(f"\n{'라벨':12s} | {'WORD번호':30s} | {'키포인트 시퀀스':10s}")
@@ -208,10 +227,10 @@ def scan_only(dataset_root, labels):
     print(f"\n총 매칭 라벨: {len(label_matches)}/{len(labels)}, 키포인트 시퀀스: {total_kp}개")
 
 
-def convert(dataset_root, output_dir, angles, stride, labels):
+def convert(dataset_root, output_dir, angles, stride, labels, exact_only=False):
     """AI Hub 키포인트 → 프로젝트 CSV 변환."""
     word_mapping = build_word_mapping(dataset_root)
-    label_matches = match_labels(word_mapping, labels)
+    label_matches = match_labels(word_mapping, labels, exact_only=exact_only)
     kp_dirs = find_keypoint_dirs(dataset_root)
 
     if not label_matches:
@@ -255,7 +274,7 @@ def convert(dataset_root, output_dir, angles, stride, labels):
         else:
             print(f"  [{label}] 키포인트 데이터 없음 (WORD 매칭은 됐으나 JSON 미존재)")
 
-    print(f"\n[Convert] 완료. 총 {total_saved}개 샘플 → {output_dir}")
+    print(f"\n[Convert] 완료. 총 {total_saved}개 샘플 ({SEQUENCE_LENGTH}×{FEATURE_DIM}) → {output_dir}")
 
 
 if __name__ == "__main__":
@@ -284,11 +303,16 @@ if __name__ == "__main__":
         "--scan", action="store_true",
         help="변환하지 않고 매칭 현황만 출력",
     )
+    parser.add_argument(
+        "--exact", action="store_true",
+        help="정확 매칭만 사용 (어근 매칭의 의미 오염 차단 — 라벨이 사전 표제어와 일치할 때)",
+    )
     args = parser.parse_args()
 
     target_labels = args.words if args.words else KSL_LABELS
 
     if args.scan:
-        scan_only(args.dataset, target_labels)
+        scan_only(args.dataset, target_labels, exact_only=args.exact)
     else:
-        convert(args.dataset, args.output, args.angles, args.stride, target_labels)
+        convert(args.dataset, args.output, args.angles, args.stride, target_labels,
+                exact_only=args.exact)
