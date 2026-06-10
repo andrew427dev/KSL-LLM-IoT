@@ -9,6 +9,11 @@
 #       데이터셋 103 이용신청 승인 상태.
 set -euo pipefail
 
+# 사전 점검 — 컨테이너 기본 이미지에 unzip·curl이 없을 수 있다
+for cmd in unzip curl aihubshell; do
+    command -v "$cmd" >/dev/null || { echo "ERROR: '$cmd' 미설치 — apt-get install -y unzip curl 후 재실행"; exit 1; }
+done
+
 N_SIGNERS="${1:-3}"
 KEY="$(cat /mnt/data/ksl/.aihub_key)"
 DEST="${DEST:-/mnt/data/ksl/aihub_full}"
