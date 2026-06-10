@@ -154,6 +154,7 @@ python convert_aihub.py --dataset /path/to/aihub/dataset --stride 10 --exact
 | 2-M | `AttributeError: module 'mediapipe' has no attribute 'solutions'` | mediapipe 0.10.30대부터 legacy solutions API 제거 | `mediapipe<0.10.30` 고정 |
 | 2-N | AI Hub 학습 모델이 실 카메라에서 좌우 반전 동작 인식 | AI Hub는 비거울 월드좌표, 런타임은 cv2.flip 거울 영상 | `convert_aihub.py:AIHUB_AXIS_SIGNS=(-1,1,1)` x 반전 (§1.5, 실측 확정) |
 | 2-O | WSL `/mnt/c` 위 venv에서 TF 업/다운그레이드 후 `No module named 'tensorflow.core'` | NTFS에서 pip 파일 교체 잔재 | `uv pip uninstall tensorflow keras` 후 재설치 |
+| 2-P | `RPi.GPIO add_event_detect` → `RuntimeError: Failed to add edge detection` (RPi 실기) | 레거시 sysfs 이벤트가 Trixie의 libgpiod 커널과 충돌 | 이벤트 디텍트 사용 금지 — `src/button_input.py`는 메인 루프 폴링(에지+디바운스 자체 구현)으로 동작 |
 
 ---
 

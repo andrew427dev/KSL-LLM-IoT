@@ -1,6 +1,7 @@
 """
 test_button_input.py
-물리 버튼 입력(src/button_input.py) 검증 — RPi.GPIO 없이 fake GPIO 주입.
+물리 버튼 입력(src/button_input.py, 폴링 방식) 검증 — RPi.GPIO 없이
+fake GPIO·가상 시계 주입.
 
 로컬 실행:
     python tests/test_button_input.py
@@ -17,69 +18,110 @@ from src.button_input import ButtonInput, EVENT_COMPLETE
 
 
 class FakeGPIO:
-    """RPi.GPIO 흉내 — setup/add_event_detect 기록 + 콜백 수동 발화."""
+    """RPi.GPIO 흉내 — setup 기록 + 핀 레벨 시뮬레이션 (풀업 기본 HIGH)."""
     IN = "IN"
     PUD_UP = "PUD_UP"
-    FALLING = "FALLING"
 
     def __init__(self):
         self.setups = {}
-        self.callbacks = {}
-        self.bouncetimes = {}
+        self.levels = {}
 
     def setup(self, pin, direction, pull_up_down=None):
         self.setups[pin] = (direction, pull_up_down)
+        self.levels[pin] = 1  # 풀업 — 안 눌림
 
-    def add_event_detect(self, pin, edge, callback, bouncetime):
-        assert edge == self.FALLING
-        self.callbacks[pin] = callback
-        self.bouncetimes[pin] = bouncetime
+    def input(self, pin):
+        return self.levels[pin]
 
     def press(self, pin):
-        """버튼 눌림 시뮬레이션 — RPi.GPIO처럼 핀 번호를 콜백에 전달."""
-        self.callbacks[pin](pin)
+        self.levels[pin] = 0
+
+    def release(self, pin):
+        self.levels[pin] = 1
+
+
+class FakeClock:
+    """가상 시계 — 디바운스 검증용."""
+    def __init__(self):
+        self.t = 0.0
+
+    def __call__(self):
+        return self.t
+
+    def advance(self, sec):
+        self.t += sec
+
+
+def make():
+    gpio, clock = FakeGPIO(), FakeClock()
+    return gpio, clock, ButtonInput(gpio, time_fn=clock)
 
 
 def test_pins_configured_with_pullup():
-    """버튼 4핀이 모두 입력+풀업으로 설정되고 디바운스가 적용돼야 한다."""
-    gpio = FakeGPIO()
-    ButtonInput(gpio)
+    """버튼 4핀이 모두 입력+풀업으로 설정돼야 한다."""
+    gpio, _clock, _buttons = make()
     expected_pins = {BUTTON_COMPLETE_PIN, *BUTTON_PERSONA_PINS.values()}
     assert set(gpio.setups) == expected_pins
     for pin in expected_pins:
         assert gpio.setups[pin] == (FakeGPIO.IN, FakeGPIO.PUD_UP)
-        assert gpio.bouncetimes[pin] == BUTTON_DEBOUNCE_MS
     print("[PASS] test_pins_configured_with_pullup")
 
 
-def test_press_events_routed():
-    """완료 버튼 → EVENT_COMPLETE, 페르소나 버튼 → 페르소나 이름."""
-    gpio = FakeGPIO()
-    buttons = ButtonInput(gpio)
+def test_falling_edge_routed():
+    """완료 버튼 → EVENT_COMPLETE, 페르소나 버튼 → 페르소나 이름.
+    누른 채 유지하면 재발화하지 않고, 뗐다 다시 누르면 재검출."""
+    gpio, clock, buttons = make()
+
+    assert buttons.poll() is None  # 초기 상태 — 이벤트 없음
 
     gpio.press(BUTTON_COMPLETE_PIN)
     assert buttons.poll() == EVENT_COMPLETE
+    assert buttons.poll() is None, "누른 채 유지 — 레벨이 아니라 에지 검출이어야 한다"
+
+    gpio.release(BUTTON_COMPLETE_PIN)
+    assert buttons.poll() is None
 
     for persona, pin in BUTTON_PERSONA_PINS.items():
+        clock.advance(1.0)
         gpio.press(pin)
         assert buttons.poll() == persona
+        gpio.release(pin)
+        buttons.poll()
+    print("[PASS] test_falling_edge_routed")
 
-    assert buttons.poll() is None  # 큐 소진
-    print("[PASS] test_press_events_routed")
 
+def test_debounce():
+    """디바운스 시간 내의 재눌림(채터링)은 무시, 경과 후에는 재검출."""
+    gpio, clock, buttons = make()
+    pin = BUTTON_COMPLETE_PIN
 
-def test_event_order_preserved():
-    """연속 입력은 누른 순서대로 회수돼야 한다 (FIFO)."""
-    gpio = FakeGPIO()
-    buttons = ButtonInput(gpio)
-    order = [BUTTON_PERSONA_PINS["간단"], BUTTON_COMPLETE_PIN,
-             BUTTON_PERSONA_PINS["정중"]]
-    for pin in order:
-        gpio.press(pin)
-    assert buttons.poll() == "간단"
+    gpio.press(pin)
     assert buttons.poll() == EVENT_COMPLETE
-    assert buttons.poll() == "정중"
-    print("[PASS] test_event_order_preserved")
+
+    # 채터링: 디바운스 시간 내 뗐다 다시 눌림
+    gpio.release(pin); buttons.poll()
+    clock.advance(BUTTON_DEBOUNCE_MS / 1000.0 * 0.5)
+    gpio.press(pin)
+    assert buttons.poll() is None, "디바운스 내 재눌림은 무시돼야 한다"
+
+    # 디바운스 경과 후 정상 재검출
+    gpio.release(pin); buttons.poll()
+    clock.advance(BUTTON_DEBOUNCE_MS / 1000.0 + 0.01)
+    gpio.press(pin)
+    assert buttons.poll() == EVENT_COMPLETE
+    print("[PASS] test_debounce")
+
+
+def test_simultaneous_press_no_loss():
+    """두 버튼 동시 눌림 — 한 poll에 1건씩, 누락 없이 순차 반환."""
+    gpio, clock, buttons = make()
+    gpio.press(BUTTON_COMPLETE_PIN)
+    gpio.press(BUTTON_PERSONA_PINS["간단"])
+    first = buttons.poll()
+    second = buttons.poll()
+    assert {first, second} == {EVENT_COMPLETE, "간단"}
+    assert buttons.poll() is None
+    print("[PASS] test_simultaneous_press_no_loss")
 
 
 def test_no_pin_conflicts():
@@ -93,7 +135,8 @@ def test_no_pin_conflicts():
 
 if __name__ == "__main__":
     test_pins_configured_with_pullup()
-    test_press_events_routed()
-    test_event_order_preserved()
+    test_falling_edge_routed()
+    test_debounce()
+    test_simultaneous_press_no_loss()
     test_no_pin_conflicts()
     print("\nAll tests done.")
