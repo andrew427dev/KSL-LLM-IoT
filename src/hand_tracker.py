@@ -29,7 +29,9 @@ import numpy as np
 import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config.settings import NUM_HANDS, HANDEDNESS_SCORE_THRESHOLD
+from config.settings import (
+    NUM_HANDS, HANDEDNESS_SCORE_THRESHOLD, MP_MODEL_COMPLEXITY,
+)
 from src.feature_format import build_feature_vector
 
 
@@ -39,6 +41,7 @@ class HandTracker:
         self.mp_draw = mp.solutions.drawing_utils
         self.hands = self.mp_hands.Hands(
             max_num_hands=NUM_HANDS,
+            model_complexity=MP_MODEL_COMPLEXITY,
             min_detection_confidence=detection_confidence,
             min_tracking_confidence=tracking_confidence,
         )

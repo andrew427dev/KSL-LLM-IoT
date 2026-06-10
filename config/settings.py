@@ -66,6 +66,16 @@ HANDEDNESS_SCORE_THRESHOLD = float(os.getenv("HANDEDNESS_SCORE_THRESHOLD", 0.7))
 # 연속 N프레임 양손 미검출 시 분류기 시퀀스 버퍼를 비운다 (stale 추론 방지).
 NO_HAND_RESET_FRAMES = int(os.getenv("NO_HAND_RESET_FRAMES", 10))
 
+# 학습 데이터(AI Hub 영상)의 프레임레이트 — 시퀀스 시간 창의 기준.
+# 인식 창 = SEQUENCE_LENGTH / TRAIN_FPS = 1.0초. 런타임 FPS가 이보다 낮아도
+# (RPi 4B + MediaPipe 실측 ~8-9 FPS) classifier가 최근 1초를 30프레임으로
+# 시간 보간해 학습 분포와 정합시킨다.
+TRAIN_FPS = 30.0
+
+# MediaPipe Hands 모델 복잡도 — 0=경량(빠름), 1=기본(정밀).
+# RPi 4B 실측: 1 → 8.0 FPS, 0 → 9.5 FPS.
+MP_MODEL_COMPLEXITY = int(os.getenv("MP_MODEL_COMPLEXITY", 0))
+
 # ── KSL Word Labels ─────────────────────────────────────
 # AI Hub 수어 데이터셋(3,000단어)의 사전 표제어와 정확히 일치하는 30단어
 # (2026-06-10 확정). 어근 매칭의 의미 오염을 피하기 위해 convert_aihub.py는
