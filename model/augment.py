@@ -2,10 +2,14 @@
 augment.py
 data/landmarks/ 의 원본 시퀀스를 증강하여 data/augmented/ 에 저장합니다.
 
-Kim et al. (2026) CMC 논문의 증강 기법 구현:
-  1. 좌우 flip  — x 좌표 부호 반전
-  2. 랜덤 노이즈 — Gaussian noise 추가
-  3. 속도 변화   — 시퀀스 리샘플링 (빠르게/느리게)
+Kim et al. (2026) CMC 논문의 증강 기법을 131차원 레이아웃
+([LEFT_63 | RIGHT_63 | wrist_vec_3 | presence_2], src/feature_format.py 참조)에
+맞게 구현:
+  1. 좌우 flip   — 손 내부 x 부호 반전 + wrist_vec y·z 부호 반전 + 슬롯/flag swap.
+                   방향 의존 수어는 FLIP_SAFE_LABELS로 opt-in.
+  2. 랜덤 노이즈 — Gaussian noise. presence flag·부재 손 슬롯·(한손 부재 시)
+                   wrist_vec에는 적용하지 않는다.
+  3. 속도 변화   — 단조증가 앵커 기반 비선형 time warp.
 
 Usage:
     python model/augment.py
@@ -18,60 +22,107 @@ import sys
 import argparse
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from config.settings import KSL_LABELS, SEQUENCE_LENGTH, INPUT_SHAPE
+from config.settings import (
+    KSL_LABELS, SEQUENCE_LENGTH, FEATURE_DIM, INPUT_SHAPE,
+    LEFT_SLOT_START, RIGHT_SLOT_START, WRIST_VEC_START, PRESENCE_FLAG_START,
+)
 
-INPUT_DIM = INPUT_SHAPE[1]  # 126 (2 hands × 21 × 3)
+_PER_HAND_DIM = RIGHT_SLOT_START - LEFT_SLOT_START  # 63
 
 LANDMARKS_DIR = "data/landmarks"
 AUGMENTED_DIR = "data/augmented"
+
+# 좌우 flip이 의미를 보존하는 라벨만 등록한다 (opt-in).
+# 방향 자체가 의미인 수어(이동·수여 동사)는 flip 시 동일 라벨의
+# 기하학적으로 틀린 샘플이 생기므로 제외: 가다, 오다, 주다, 돕다.
+# 나머지는 왼손잡이 수어자의 거울상 수행이 동일 의미이므로 안전.
+# 1차 학습 confusion matrix에서 flip 기인 혼동이 보이면 재검토.
+FLIP_SAFE_LABELS = {
+    "나", "당신", "좋다", "싫다", "맞다", "서다", "자다",
+    "배고프다", "목마르다", "아프다", "피곤하다",
+    "춥다", "덥다", "슬프다", "화나다",
+    "행복", "감사", "부탁",
+    "밥", "병원", "의사", "엄마", "가족", "친구", "얼마",
+    "완료",
+}
 
 
 # ── 증강 함수 ───────────────────────────────────────────
 
 def flip_horizontal(seq: np.ndarray) -> np.ndarray:
     """
-    실제 거울 효과 = (1) 모든 x 좌표 부호 반전 + (2) LEFT/RIGHT 손 블록 swap.
-    seq shape: (T, 126) = [LEFT_63 | RIGHT_63].
-    x 컬럼은 0, 3, 6, ..., 123 — half 경계와 무관하게 동일 규칙.
+    실제 거울 효과. seq shape: (T, FEATURE_DIM).
+      1. 손 내부 x 좌표 부호 반전 (양 슬롯의 0,3,...,60 오프셋 컬럼)
+      2. wrist_vec = 우손목−좌손목: 거울 후 손이 서로 바뀌므로 빼는 순서가
+         반전되고 x는 거울로 한 번 더 반전 — 결과적으로 x 불변, y·z만 부호 반전
+      3. LEFT/RIGHT 슬롯 swap + presence flag swap
     """
-    augmented = seq.copy()
-    augmented[:, 0::3] *= -1
-    n_half = seq.shape[1] // 2  # 63
-    return np.concatenate([augmented[:, n_half:], augmented[:, :n_half]], axis=1)
+    mirrored = seq.copy()
+    for start in (LEFT_SLOT_START, RIGHT_SLOT_START):
+        mirrored[:, start:start + _PER_HAND_DIM][:, 0::3] *= -1
+    mirrored[:, WRIST_VEC_START + 1:WRIST_VEC_START + 3] *= -1
+
+    out = mirrored.copy()
+    out[:, LEFT_SLOT_START:LEFT_SLOT_START + _PER_HAND_DIM] = \
+        mirrored[:, RIGHT_SLOT_START:RIGHT_SLOT_START + _PER_HAND_DIM]
+    out[:, RIGHT_SLOT_START:RIGHT_SLOT_START + _PER_HAND_DIM] = \
+        mirrored[:, LEFT_SLOT_START:LEFT_SLOT_START + _PER_HAND_DIM]
+    out[:, PRESENCE_FLAG_START] = mirrored[:, PRESENCE_FLAG_START + 1]
+    out[:, PRESENCE_FLAG_START + 1] = mirrored[:, PRESENCE_FLAG_START]
+    return out
 
 
 def add_noise(seq: np.ndarray, std: float = 0.01) -> np.ndarray:
-    """Gaussian noise 추가."""
+    """
+    Gaussian noise 추가. 단 다음 영역은 마스킹한다:
+      - presence flag 차원 (이산값 보존)
+      - presence=0인 손 슬롯 (존재하지 않는 손에 가짜 신호 방지)
+      - 한쪽 손이라도 부재한 프레임의 wrist_vec (정의상 0이어야 함)
+    """
     noise = np.random.normal(0, std, seq.shape).astype(np.float32)
+
+    noise[:, PRESENCE_FLAG_START:] = 0.0
+
+    left_absent = seq[:, PRESENCE_FLAG_START] == 0.0
+    right_absent = seq[:, PRESENCE_FLAG_START + 1] == 0.0
+    noise[left_absent, LEFT_SLOT_START:LEFT_SLOT_START + _PER_HAND_DIM] = 0.0
+    noise[right_absent, RIGHT_SLOT_START:RIGHT_SLOT_START + _PER_HAND_DIM] = 0.0
+    noise[left_absent | right_absent, WRIST_VEC_START:WRIST_VEC_START + 3] = 0.0
+
     return seq + noise
 
 
-def time_warp(seq: np.ndarray, speed_factor: float = None) -> np.ndarray:
+def time_warp(seq: np.ndarray, max_jitter: float = 0.15) -> np.ndarray:
     """
-    시퀀스 속도 변화 (리샘플링).
-    speed_factor > 1 : 빠른 수화 (프레임 압축)
-    speed_factor < 1 : 느린 수화 (프레임 확장)
+    단조증가 랜덤 앵커 기반 비선형 시간 왜곡 — 구간별로 빠르고 느린
+    수행 속도 변화를 시뮬레이션한다. 시작·끝 프레임은 보존.
+
+    presence flag는 보간 후 0/1로 재이산화하고, flag=0인 손 슬롯은
+    feature_format 불변식(부재 손 = zero)에 맞게 0으로 되돌린다.
     """
-    if speed_factor is None:
-        speed_factor = np.random.uniform(0.7, 1.3)
+    n = len(seq)
+    n_anchors = 5
+    anchor_pos = np.linspace(0, n - 1, n_anchors)
+    jitter = np.random.uniform(-max_jitter, max_jitter, n_anchors) * (n / n_anchors)
+    jitter[0] = jitter[-1] = 0.0  # 경계 보존
+    warped_anchor = np.maximum.accumulate(np.clip(anchor_pos + jitter, 0, n - 1))
+    sample_times = np.interp(np.arange(n), anchor_pos, warped_anchor)
 
-    n = SEQUENCE_LENGTH
-    original_idx = np.linspace(0, n - 1, int(n * speed_factor))
-    original_idx = np.clip(original_idx, 0, n - 1)
+    lo = np.floor(sample_times).astype(int)
+    hi = np.minimum(lo + 1, n - 1)
+    frac = (sample_times - lo)[:, None].astype(np.float32)
+    out = seq[lo] * (1.0 - frac) + seq[hi] * frac
 
-    warped = np.array([
-        seq[int(i)] * (1 - (i % 1)) + seq[min(int(i) + 1, n - 1)] * (i % 1)
-        for i in original_idx
-    ], dtype=np.float32)
+    # presence flag 재이산화 + 불변식 복원
+    flags = np.round(out[:, PRESENCE_FLAG_START:PRESENCE_FLAG_START + 2])
+    out[:, PRESENCE_FLAG_START:PRESENCE_FLAG_START + 2] = flags
+    left_absent = flags[:, 0] == 0.0
+    right_absent = flags[:, 1] == 0.0
+    out[left_absent, LEFT_SLOT_START:LEFT_SLOT_START + _PER_HAND_DIM] = 0.0
+    out[right_absent, RIGHT_SLOT_START:RIGHT_SLOT_START + _PER_HAND_DIM] = 0.0
+    out[left_absent | right_absent, WRIST_VEC_START:WRIST_VEC_START + 3] = 0.0
 
-    # SEQUENCE_LENGTH로 다시 리샘플
-    target_idx = np.linspace(0, len(warped) - 1, n)
-    result = np.array([
-        warped[int(i)] * (1 - (i % 1)) + warped[min(int(i) + 1, len(warped) - 1)] * (i % 1)
-        for i in target_idx
-    ], dtype=np.float32)
-
-    return result
+    return out.astype(np.float32)
 
 
 # ── 메인 증강 로직 ──────────────────────────────────────
@@ -92,6 +143,7 @@ def augment_label(label: str, factor: int):
         print(f"  [Skip] {label} — CSV 파일 없음")
         return 0
 
+    flip_ok = label in FLIP_SAFE_LABELS
     saved = 0
     aug_idx = 0
 
@@ -103,17 +155,27 @@ def augment_label(label: str, factor: int):
             print(f"  [Error] {fname}: {e}")
             continue
 
-        if seq.shape != (SEQUENCE_LENGTH, INPUT_DIM):
+        if seq.shape != (SEQUENCE_LENGTH, FEATURE_DIM):
             continue
 
-        # 각 원본 샘플에 대해 factor개 증강 생성
+        # 각 원본 샘플에 대해 factor개 증강 생성.
+        # flip은 FLIP_SAFE_LABELS에 등록된 라벨만 — 그 외에는 time_warp+noise로 대체.
         for _ in range(factor):
-            augmentations = [
-                flip_horizontal(seq),
-                add_noise(seq, std=np.random.uniform(0.005, 0.02)),
-                time_warp(seq),
-                add_noise(flip_horizontal(seq), std=0.01),  # flip + noise 조합
-            ]
+            std = np.random.uniform(0.005, 0.02)
+            if flip_ok:
+                augmentations = [
+                    flip_horizontal(seq),
+                    add_noise(seq, std=std),
+                    time_warp(seq),
+                    add_noise(flip_horizontal(seq), std=0.01),
+                ]
+            else:
+                augmentations = [
+                    time_warp(seq),
+                    add_noise(seq, std=std),
+                    time_warp(add_noise(seq, std=0.01)),
+                    add_noise(time_warp(seq), std=0.01),
+                ]
             chosen = augmentations[aug_idx % len(augmentations)]
             aug_idx += 1
 

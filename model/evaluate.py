@@ -46,7 +46,10 @@ def evaluate():
         y_pred.append(KSL_LABELS[np.argmax(output)])
 
     # 정확도 리포트
-    print("\n" + classification_report(y_raw, y_pred, target_names=KSL_LABELS))
+    # labels= 명시 — sklearn은 미지정 시 라벨을 정렬해 target_names와 어긋난다
+    print("\n" + classification_report(
+        y_raw, y_pred, labels=KSL_LABELS, target_names=KSL_LABELS, zero_division=0
+    ))
     print(f"Avg Inference Latency: {np.mean(latencies)*1000:.2f} ms")
     print(f"Estimated FPS: {1.0/np.mean(latencies):.1f}")
 
