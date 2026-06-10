@@ -8,6 +8,8 @@ __pycache__/
 
 # Tooling / scratch
 .omc/
+docs/superpowers/
+.remember/
 
 # Model files (large)
 *.tflite

@@ -3,7 +3,8 @@
 # RPi 설치: pip install -r requirements-rpi.txt
 
 # Core CV
-mediapipe>=0.10.0
+# mediapipe 0.10.30대부터 legacy solutions API(mp.solutions.hands) 제거 — 상한 고정
+mediapipe>=0.10.0,<0.10.30
 opencv-python>=4.8.0
 
 # ML (추론 전용 — tensorflow 대신 경량 런타임)

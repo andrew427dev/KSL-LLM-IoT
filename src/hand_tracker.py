@@ -2,18 +2,20 @@
 hand_tracker.py
 MediaPipe Hands로 양손(좌·우)을 동시에 추출한다.
 
-출력 레이아웃: 한 프레임에 대해 [LEFT_63 | RIGHT_63] = 126차원 벡터.
-각 손은 자신의 손목(landmark 0) 기준으로 상대 좌표 정규화한다.
-미감지 손은 zero-pad. 양손 모두 미감지면 None.
+출력: 한 프레임당 131차원 벡터 (src/feature_format.py 레이아웃 참조)
+    [LEFT_63 | RIGHT_63 | wrist_vec_3 | presence_2]
+각 손은 손목(landmark 0) 상대좌표를 intra-hand scale(‖landmark9−landmark0‖)로
+나눠 정규화한다. 미감지 손은 zero + presence=0. 양손 모두 미감지면 None.
 
 MediaPipe의 handedness 라벨은 *입력 영상이 거울 모드(selfie)임을 가정*하고
 부여된다. 본 프로젝트의 main.py / collect_data.py는 모두 cv2.flip(frame, 1)
-이후 extract_landmarks()를 호출하므로, MediaPipe의 'Left' = 사용자의
-해부학적 왼손에 일치한다.
+이후 extract_landmarks()를 호출하므로(mirrored=True), MediaPipe의 'Left' =
+사용자의 해부학적 왼손에 일치한다 — swap 불필요 (PR #7 실기 검증).
+mirrored=False로 호출하면(비거울 입력) 라벨을 swap한다.
 
 견고성 처리:
-- handedness score < HANDEDNESS_SCORE_THRESHOLD 인 손은 라벨이 불확실하므로
-  좌/우 swap 노이즈를 방지하기 위해 폐기.
+- handedness score < HANDEDNESS_SCORE_THRESHOLD 인 손은 라벨을 신뢰하지 않고
+  x좌표 fallback으로 슬롯을 배정한다 (거울모드에서 작은 x = 사용자 좌손).
 - 두 손이 동일 라벨로 분류된 충돌 케이스(드물지만 발생) 시 score 높은 쪽을
   해당 라벨에 두고, 점수 낮은 쪽은 반대편 슬롯이 비어 있으면 거기로 재배정.
   재배정 시 stderr에 warning을 한 줄 출력한다.
@@ -23,13 +25,14 @@ import sys
 import cv2
 import mediapipe as mp
 import numpy as np
-from config.settings import NUM_HANDS, NUM_LANDMARKS, NUM_AXES
 
-_PER_HAND_DIM = NUM_LANDMARKS * NUM_AXES  # 63
+import os
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-# handedness 신뢰도 임계값 — 미달 시 해당 손은 미감지로 처리.
-# Week 2 수집 중 raw 분포를 보고 0.6~0.8 범위에서 재조정 가능.
-HANDEDNESS_SCORE_THRESHOLD = 0.7
+from config.settings import (
+    NUM_HANDS, HANDEDNESS_SCORE_THRESHOLD, MP_MODEL_COMPLEXITY,
+)
+from src.feature_format import build_feature_vector
 
 
 class HandTracker:
@@ -38,52 +41,66 @@ class HandTracker:
         self.mp_draw = mp.solutions.drawing_utils
         self.hands = self.mp_hands.Hands(
             max_num_hands=NUM_HANDS,
+            model_complexity=MP_MODEL_COMPLEXITY,
             min_detection_confidence=detection_confidence,
             min_tracking_confidence=tracking_confidence,
         )
         self._last_result = None  # extract_landmarks의 최신 결과 캐시
 
-    def extract_landmarks(self, frame):
+    def extract_landmarks(self, frame, mirrored=True):
         """
-        프레임에서 양손 랜드마크를 추출한다.
+        프레임에서 양손 랜드마크를 추출해 131차원 feature 벡터로 반환한다.
 
+        Args:
+            frame: BGR 프레임. 호출자가 거울모드(cv2.flip)를 이미 적용했으면
+                   mirrored=True(기본). 비거울 입력이면 mirrored=False.
         Returns:
-            np.ndarray of shape (126,) — [LEFT_63 | RIGHT_63] 순서.
-            None — 양손 모두 감지되지 않거나 모두 score 미달인 경우.
+            np.ndarray of shape (FEATURE_DIM,) 또는 None(양손 모두 미감지).
         """
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         self._last_result = self.hands.process(rgb)
+        return self._build_feature_vector(self._last_result, mirrored=mirrored)
 
-        if not self._last_result.multi_hand_landmarks:
+    def _build_feature_vector(self, result, mirrored=True):
+        """MediaPipe 결과 객체 → 131차원 벡터 (테스트에서 fake 객체 주입 가능)."""
+        if not result.multi_hand_landmarks:
             return None
 
-        # 후보 수집: score 임계값 통과한 손만 (label, score, normalized_63) 보관.
-        # MediaPipe 내부 버그로 multi_handedness 길이가 multi_hand_landmarks와
-        # 불일치할 경우 zip이 짧은 쪽으로 잘려 자연스럽게 dropped 됨 (방어적).
-        candidates = []
-        for hand_landmarks, handedness in zip(
-            self._last_result.multi_hand_landmarks,
-            self._last_result.multi_handedness,
-        ):
-            c = handedness.classification[0]
-            if c.score < HANDEDNESS_SCORE_THRESHOLD:
-                continue
-            candidates.append((c.label, c.score, self._normalize_hand(hand_landmarks)))
+        handednesses = result.multi_handedness or []
 
-        if not candidates:
-            return None
+        # 후보 수집: (label_or_None, score, coords(21,3)).
+        # score 미달·handedness 누락 손은 label=None → x좌표 fallback 대상.
+        labeled = []
+        for i, hand_landmarks in enumerate(result.multi_hand_landmarks):
+            coords = np.array(
+                [[lm.x, lm.y, lm.z] for lm in hand_landmarks.landmark],
+                dtype=np.float32,
+            )
+            label, score = None, 0.0
+            if i < len(handednesses):
+                c = handednesses[i].classification[0]
+                score = c.score
+                if c.score >= HANDEDNESS_SCORE_THRESHOLD:
+                    label = c.label
+                    if not mirrored:
+                        # 비거울 입력 — MediaPipe의 selfie 가정과 어긋나므로 swap
+                        label = "Right" if label == "Left" else "Left"
+            labeled.append((label, score, coords))
 
-        # 라벨 충돌 처리: 같은 라벨이 2건 이상이면 비어 있는 반대편으로 옮긴다.
-        # score 가장 낮은 쪽을 옮겨, 가장 신뢰도 높은 손이 본래 라벨에 유지되도록 한다.
         by_label = {"Left": [], "Right": []}
-        for label, score, arr in candidates:
-            by_label[label].append((score, arr))
+        unlabeled = []
+        for label, score, coords in labeled:
+            if label is None:
+                unlabeled.append((score, coords))
+            else:
+                by_label[label].append((score, coords))
 
+        # 라벨 충돌 처리: 같은 라벨이 2건 이상이면 score 낮은 쪽을 빈 반대편으로.
         for src, dst in (("Left", "Right"), ("Right", "Left")):
             while len(by_label[src]) > 1 and not by_label[dst]:
                 by_label[src].sort(key=lambda x: x[0])  # 점수 오름차순
-                moved_score, moved_arr = by_label[src].pop(0)
-                by_label[dst].append((moved_score, moved_arr))
+                moved_score, moved_coords = by_label[src].pop(0)
+                by_label[dst].append((moved_score, moved_coords))
                 print(
                     f"[HandTracker] handedness conflict — both hands labeled '{src}', "
                     f"reassigning lower-score hand (score={moved_score:.2f}) to '{dst}'.",
@@ -91,21 +108,22 @@ class HandTracker:
                 )
 
         # 슬롯별 최고 점수 손만 사용 (충돌 후 잔여 중복은 폐기).
-        left = (max(by_label["Left"], key=lambda x: x[0])[1]
-                if by_label["Left"] else np.zeros(_PER_HAND_DIM, dtype=np.float32))
-        right = (max(by_label["Right"], key=lambda x: x[0])[1]
-                 if by_label["Right"] else np.zeros(_PER_HAND_DIM, dtype=np.float32))
+        left = max(by_label["Left"], key=lambda x: x[0])[1] if by_label["Left"] else None
+        right = max(by_label["Right"], key=lambda x: x[0])[1] if by_label["Right"] else None
 
-        return np.concatenate([left, right])
+        # x좌표 fallback: 라벨 불확실 손을 빈 슬롯에 배정.
+        # 거울모드 기준 화면 작은 x = 사용자 좌손 (비거울이면 좌표 자체가 반대라
+        # 동일 비교가 성립하지 않으나, 현 파이프라인은 항상 mirrored=True).
+        if unlabeled:
+            unlabeled.sort(key=lambda sc: sc[1][0, 0])  # 손목 x 오름차순
+            for _score, coords in unlabeled:
+                if left is None:
+                    left = coords
+                elif right is None:
+                    right = coords
+                # 두 슬롯 모두 차 있으면 폐기
 
-    @staticmethod
-    def _normalize_hand(hand_landmarks):
-        """손목(landmark 0) 기준 상대 좌표로 정규화한 21×3 = 63차원 벡터."""
-        wrist = hand_landmarks.landmark[0]
-        flat = []
-        for lm in hand_landmarks.landmark:
-            flat.extend([lm.x - wrist.x, lm.y - wrist.y, lm.z - wrist.z])
-        return np.array(flat, dtype=np.float32)
+        return build_feature_vector(left, right)
 
     def draw_landmarks(self, frame):
         """extract_landmarks()의 캐시 결과로 양손 랜드마크를 시각화 (이중 처리 없음)."""

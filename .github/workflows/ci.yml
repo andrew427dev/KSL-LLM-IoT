@@ -33,8 +33,14 @@ jobs:
       - name: Syntax check (compileall)
         run: |
           python -m compileall -q \
-            config src model tests \
-            collect_data.py make_dummy_model.py
+            config src model tests tools \
+            collect_data.py make_dummy_model.py convert_aihub.py
 
       - name: Smoke test (settings + augment + source markers)
         run: python tests/test_smoke.py
+
+      - name: Augment test (131-dim flip/noise/time_warp)
+        run: python tests/test_augment_two_hands.py
+
+      - name: Button input test (fake GPIO — RPi 불필요)
+        run: python tests/test_button_input.py

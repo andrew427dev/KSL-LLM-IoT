@@ -22,6 +22,7 @@ C_LCD    = "#2980b9"   # LCD — 파랑
 C_BUZZ   = "#27ae60"   # 부저 — 초록
 C_CAM    = "#8e44ad"   # 카메라 — 보라
 C_SPK    = "#e67e22"   # 스피커 — 주황
+C_BTN    = "#16a085"   # 푸시 버튼 — 청록
 C_WIRE_5V  = "#e74c3c" # 5V 선
 C_WIRE_GND = "#2c3e50" # GND 선
 C_WIRE_SIG = "#f39c12" # 신호 선
@@ -60,7 +61,8 @@ def main():
     ax.set_ylim(0, 9)
     ax.axis('off')
     ax.set_title("KSL-LLM-IoT  Hardware Wiring Diagram\n"
-                 "Raspberry Pi 4B — I2C LCD 20×4 — Pi Camera v2 — Buzzer — USB Speaker",
+                 "Raspberry Pi 4B — I2C LCD 20×4 — Pi Camera v2 — Buzzer — "
+                 "Push Buttons ×4 — USB Speaker",
                  fontsize=13, fontweight='bold', pad=14, color='#2c3e50')
 
     # ── Raspberry Pi 4B (중앙) ───────────────────────────
@@ -107,6 +109,19 @@ def main():
     draw_wire(ax, bz_x + 3.0, bz_y + 0.3, rpi_x, rpi_y + 1.1,
               C_WIRE_GND, "GND")
 
+    # ── 푸시 버튼 ×4 (하단 중앙) ─────────────────────────
+    # 각 버튼: 한쪽 다리 → 해당 GPIO, 다른 다리 → GND(물리 30/34).
+    # 내부 풀업 사용 — 외부 저항 불필요, 눌림 = LOW.
+    btn_x, btn_y = 4.9, 0.5
+    draw_box(ax, btn_x, btn_y, 4.2, 1.3,
+             "Push Buttons ×4  (other leg → GND)\n"
+             "Complete=GPIO5(29)  Polite=GPIO6(31)\n"
+             "Friendly=GPIO13(33)  Brief=GPIO19(35)",
+             C_BTN, fontsize=8)
+    for i, gpio_label in enumerate(["G5", "G6", "G13", "G19"]):
+        wx = btn_x + 0.7 + i * 0.95
+        draw_wire(ax, wx, btn_y + 1.3, wx, rpi_y, C_WIRE_SIG, gpio_label)
+
     # ── Pi Camera v2 (상단) ──────────────────────────────
     cam_x, cam_y = 5.3, 7.2
     draw_box(ax, cam_x, cam_y, 3.4, 1.2, "Pi Camera Module v2\n(CSI Ribbon Cable)", C_CAM, fontsize=10)
@@ -130,21 +145,23 @@ def main():
               fontsize=9, framealpha=0.9, title="Wire Colors", title_fontsize=9)
 
     # ── GPIO 요약 표 ─────────────────────────────────────
-    table_x, table_y = 9.8, 1.0
-    ax.text(table_x, table_y + 1.6, "GPIO Pin Summary",
+    table_x, table_y = 9.8, 1.5
+    ax.text(table_x, table_y + 2.0, "GPIO Pin Summary",
             fontsize=9, fontweight='bold', color='#2c3e50')
     rows = [
         ("GPIO 2 (SDA)", "I2C LCD — Data"),
         ("GPIO 3 (SCL)", "I2C LCD — Clock"),
         ("GPIO 17",      "Buzzer (+)"),
+        ("GPIO 5/6/13/19", "Buttons: complete/persona x3"),
         ("5V  Pin 2",    "LCD VCC"),
         ("GND Pin 6",    "LCD GND / Buzzer (–)"),
+        ("GND Pin 30/34", "Button legs"),
         ("CSI Port",     "Pi Camera v2"),
         ("USB Port",     "Speaker / Webcam"),
     ]
     for i, (pin, desc) in enumerate(rows):
-        y_pos = table_y + 1.3 - i * 0.22
-        ax.text(table_x, y_pos, f"{pin:<18} {desc}", fontsize=7.5,
+        y_pos = table_y + 1.7 - i * 0.2
+        ax.text(table_x, y_pos, f"{pin:<16} {desc}", fontsize=7,
                 color='#2c3e50', family='monospace')
 
     plt.tight_layout()
