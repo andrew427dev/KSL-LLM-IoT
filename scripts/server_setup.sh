@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
 # GPU 학습 서버 1회 환경 구축 — 서버에서 실행한다.
 #   bash scripts/server_setup.sh
-# 전제: Python 3.10 (서버 시스템), 디스크 여유 ≥8GB.
+# 전제: Python 3.10 (서버 시스템). venv는 /mnt/data(영구 NFS)에 생성 —
+# 컨테이너 루트(overlay)는 pod 재시작 시 소실된다.
 # mediapipe·opencv는 설치하지 않는다 — 서버는 키포인트 JSON 변환·학습만 수행.
 set -euo pipefail
 
-VENV="${VENV:-$HOME/ksl-venv}"
+VENV="${VENV:-/mnt/data/ksl/ksl-venv}"
 
 if [ ! -x "$VENV/bin/python" ]; then
     echo "[Setup] venv 생성: $VENV"

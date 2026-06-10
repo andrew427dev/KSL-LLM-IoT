@@ -9,10 +9,10 @@ PORT="${KSL_GPU_PORT:-30007}"
 
 mkdir -p "$LOCAL_DIR"
 scp -P "$PORT" \
-    "$HOST:ksl-artifacts/ksl_model.tflite" \
-    "$HOST:ksl-artifacts/confusion_matrix.png" \
-    "$HOST:ksl-artifacts/train.log" \
-    "$HOST:ksl-artifacts/evaluate.log" \
+    "$HOST:/mnt/data/ksl/ksl-artifacts/ksl_model.tflite" \
+    "$HOST:/mnt/data/ksl/ksl-artifacts/confusion_matrix.png" \
+    "$HOST:/mnt/data/ksl/ksl-artifacts/train.log" \
+    "$HOST:/mnt/data/ksl/ksl-artifacts/evaluate.log" \
     "$LOCAL_DIR/"
 
 echo "[Fetch] 완료 → $LOCAL_DIR"

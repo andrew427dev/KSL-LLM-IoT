@@ -6,7 +6,7 @@
 set -euo pipefail
 
 DATASET="${1:?usage: upload_dataset.sh <dataset_root> [remote_dir]}"
-REMOTE_DIR="${2:-aihub_dataset}"
+REMOTE_DIR="${2:-/mnt/data/ksl/aihub_dataset}"
 HOST="${KSL_GPU_HOST:-root@cscloud.gpu3.hufs.ac.kr}"
 PORT="${KSL_GPU_PORT:-30007}"
 
@@ -16,4 +16,4 @@ tar -czf - \
     -C "$DATASET" . \
   | ssh -p "$PORT" "$HOST" "mkdir -p '$REMOTE_DIR' && tar -xzf - -C '$REMOTE_DIR'"
 
-echo "[Upload] 완료. 서버에서: bash scripts/run_training.sh ~/$REMOTE_DIR"
+echo "[Upload] 완료. 서버에서: bash scripts/run_training.sh $REMOTE_DIR"

@@ -4,7 +4,7 @@
 # .venv / .git / data / __pycache__ 등 무거운 비코드 디렉터리는 제외한다.
 set -euo pipefail
 
-REMOTE_DIR="${1:-KSL-LLM-IoT}"
+REMOTE_DIR="${1:-/mnt/data/ksl/KSL-LLM-IoT}"
 HOST="${KSL_GPU_HOST:-root@cscloud.gpu3.hufs.ac.kr}"
 PORT="${KSL_GPU_PORT:-30007}"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
