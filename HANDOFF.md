@@ -13,7 +13,9 @@
 ### 1.1 코드
 
 - 기본 브랜치: `main` (보호) ← `develop` ← feature 브랜치 (GitFlow 변형)
-- **현재 작업 브랜치: `feat/131-feature-format`** — **PR #9 OPEN** (develop 대상, CI 그린, 머지 대기). 131차원 전환·서버 학습 파이프라인·물리 버튼·페르소나·시간 리샘플링 등 이번 사이클 전체가 이 PR에 있다.
+- **현재 브랜치: `develop`** — **PR #9 MERGED** (2026-06-11, CI 그린). 131차원 전환·서버 학습 파이프라인·물리 버튼·페르소나·시간 리샘플링·도메인 갭 정리(§1.6)가 develop에 통합됐다.
+- 머지 전 전수 리뷰(9각도 finder + 후보별 검증, Claude Code) 결과 **15건이 PR #9 리뷰 코멘트에 기록** — develop 대비 회귀 없음, High 2건 포함 후속 수정은 §4.5.
+- 주의: 머지 시 원격 `feat/131-feature-format`이 자동 삭제되어 재푸시(84af918)로 복구했다 — **GPU 재학습 체인이 이 브랜치를 pull하므로 체인 종료 전까지 삭제 금지**.
 - 머지 완료 PR:
 
   | PR | 브랜치 | 내용 |
@@ -23,6 +25,7 @@
   | #6 | `develop` → `main` | develop 통합 머지 |
   | #7 | `feat/two-hand-input` | 양손 입력 전환 (INPUT_SHAPE 63→126) |
   | #8 | `ci/static-checks` | 정적 검증 워크플로 추가 |
+  | #9 | `feat/131-feature-format` | 131차원 전환, GPU 학습 파이프라인, 물리 버튼 4개, 시간 리샘플링, 도메인 갭 정리 |
 
 - 머지 흐름: feature 브랜치 → `develop` → `main`.
 
@@ -61,7 +64,7 @@ RPi 실기 통합 (2026-06-10/11, USB 웹캠 + 운용 모델):
 - [x] 하드웨어 결선 전부 완료 (LCD/부저/스피커/버튼 4개/USB 웹캠)
 - [x] Gemini API 키 등록 (RPi .env) — 실호출 검증
 - [ ] **실기 인식률 확보** — 16명 재학습 결과로 판단. 미달 시 본인 데이터 수집 혼합(collect_data를 시간 리샘플 방식으로 수정 필요 — 미착수)
-- [ ] PR #9 머지 → develop → main 릴리스
+- [x] PR #9 → develop 머지 (2026-06-11). main 릴리스는 제출 직전 수행
 - [ ] 데모 영상 (`docs/final_report_outline.md` 샷 리스트) · 최종 보고서(PDF ≥10p) · PPT(영어 ≥15슬라이드) — 아웃라인 docs/에 완비
 - [ ] AI Hub API 키 파일: 서버 `/mnt/data/ksl/.aihub_key` (비밀 — 커밋 금지)
 
@@ -154,13 +157,14 @@ python convert_aihub.py --dataset /path/to/aihub/dataset --stride 10 --exact
 | G3 | 검출 실패·handedness 노이즈 | 멀티뷰 복원이라 양손 상시 존재, 좌우 구분 ground-truth 수준 | 저FPS+모션 블러로 미검출 빈발(한 손만 잡히는 프레임), handedness 오분류 시 슬롯 스왑·x좌표 fallback 개입(`hand_tracker.py`) — presence flag 패턴 자체가 학습 분포 밖 | **대응 없음** — 백로그 증강 ② 참조 |
 | G4 | 시연자 분포 | 전문 수어자 (1차 모델은 3명 과적합), 동작 크고 표준 속도 | 실사용자 — 동작 작고 속도·정확도 상이 | 16명 재학습 진행 중(§4.1). 잔여분은 본인 데이터 혼합(§4.2) |
 | G5 | 과신 → threshold 무력화 | 좁은 시연자 분포 학습 → 전 예측 ~1.00 | `CONFIDENCE_THRESHOLD=0.85`가 오인식을 거르지 못함 | label smoothing 0.1(`train.py`) — 16명 재학습 반영 중 |
+| G6 | x·y 등방성 (2026-06-11 리뷰 발견) | 멀티뷰 3D 복원 — 등방 미터 좌표 | MediaPipe 좌표는 축별 정규화(x÷너비, y÷높이) — 640×480에서 **y가 x 대비 4/3배 스케일**. intra-hand scale(혼합축 L2 norm)로는 소거 불가. 축별 상관계수는 스케일 불변이라 정합 도구가 탐지 못함(r_y=0.982와 공존) | **대응 없음** — `hand_tracker`에서 (w,h,w) 스케일 보정 1줄, 단 특징 분포가 바뀌므로 **재학습과 동시 적용** (PR #9 리뷰 #1) |
 
 **백로그 증강 (G2·G3 직접 공략 — 학습 데이터를 런타임처럼 열화):**
 
 1. **low-FPS 시뮬레이션**: 30프레임 시퀀스를 랜덤 8~10포인트로 다운샘플 후 다시 30포인트로 선형 보간 — 런타임 입력의 smoothing 특성을 그대로 재현. `classifier._resample_window`와 동일 수식 재사용 가능.
 2. **presence dropout**: 랜덤 구간에서 한 손 슬롯을 zero + flag 0으로 — MediaPipe 미검출 깜빡임 패턴 재현. feature_format 불변식(부재 손=zero, wrist_vec=0)은 기존 `time_warp` 복원 코드와 동일 규칙 적용.
 
-**주범 역추적 신호 (16명 재학습 후 재진단 시):** 특정 *의미 유사 단어쌍* 혼동이 잔존하면 G1·G4(도메인·시연자 갭), *빠른 동작 단어만* 일관 오류면 G2(보간 smoothing)가 주범 — `tools/diagnose_live.py` 결과를 단어별 오류 패턴으로 분류해 판정한다.
+**주범 역추적 신호 (16명 재학습 후 재진단 시):** 특정 *의미 유사 단어쌍* 혼동이 잔존하면 G1·G4(도메인·시연자 갭), *빠른 동작 단어만* 일관 오류면 G2(보간 smoothing)가 주범 — `tools/diagnose_live.py` 결과를 단어별 오류 패턴으로 분류해 판정한다. **G6은 전 단어 공통의 상수 기하 왜곡**이므로 held-out 정확도는 높은데 실기 전반이 미달하는 패턴이면 등방 보정+재학습(§4.5 ①)을 우선 적용한다.
 
 ---
 
@@ -279,7 +283,7 @@ bash scripts/fetch_model.sh /tmp/m && scp /tmp/m/ksl_model.tflite rpi:Desktop/KS
 ssh rpi 'cd ~/Desktop/KSL-LLM-IoT && tmux kill-session -t diag 2>/dev/null; tmux new -d -s diag "DISPLAY=:0 .venv/bin/python tools/diagnose_live.py 300 > /tmp/ksl_diag.log 2>&1"'
 ```
 
-판정: top-3에 수행 단어가 들어오고 확신 분포가 정상화(0.3~0.9 분포)되면 데모 시나리오 확정. 미달이면 §1.6 주범 역추적 신호로 잔여 갭을 판별한 뒤 — G2·G3이면 백로그 증강(low-FPS 시뮬레이션·presence dropout) 추가 재학습, G4이면 4.2 본인 데이터 혼합.
+판정: top-3에 수행 단어가 들어오고 확신 분포가 정상화(0.3~0.9 분포)되면 데모 시나리오 확정. 미달이면 §1.6 주범 역추적 신호로 잔여 갭을 판별한 뒤 — G2·G3이면 백로그 증강(low-FPS 시뮬레이션·presence dropout) 추가 재학습, G4이면 4.2 본인 데이터 혼합, 전반 미달이면 G6 등방 보정+재학습(§4.5 ①). **판정 지표는 train.log의 Test Accuracy 사용 — evaluate.log는 학습 데이터 재포함이라 부풀려짐 (§4.5 ④)**.
 
 ### 4.2 (조건부) 본인 데이터 혼합
 
@@ -302,6 +306,16 @@ tmux new -d -s ksl "cd ~/Desktop/KSL-LLM-IoT && DISPLAY=:0 KSL_HEADLESS=0 .venv/
 
 - 데모 영상·보고서·PPT 아웃라인: `docs/final_report_outline.md`, `docs/presentation_outline.md` — [TBD] 수치만 채우면 집필 가능
 - PR #9 머지 → develop→main 릴리스 → zip 패키징 (`IoT_YourName_StudentID_TermProject.rar`)
+
+### 4.5 PR #9 리뷰 후속 수정 백로그 (2026-06-11 — 전체 15건은 PR #9 리뷰 코멘트)
+
+develop 위 새 feature 브랜치에서 진행. 우선순위:
+
+1. **G6 등방 보정** (리뷰 #1, High) — `hand_tracker`에서 랜드마크를 (w,h,w) 스케일 후 `build_feature_vector` 전달. 특징 분포가 바뀌므로 재학습·재진단과 한 사이클로 묶는다.
+2. **다운로드 무결성** (리뷰 #2, High) — `server_download_aihub.sh`의 unzip exit 11(무매칭 정상)과 치명 오류 구분, zip 삭제·done 마커 전 검증. **이번 16명 체인 완료 후 단어별 시퀀스 수 검수 필수**.
+3. 빠른 수정 묶음 — `deploy_code.sh`에 `--exclude='.env'`(리뷰 #8) / `run_training.sh` rm 전 데이터셋 경로 가드(리뷰 #7) / `classifier.__init__` 모델 입출력 shape 검증으로 fail-fast(리뷰 #9).
+4. 평가 신뢰성 — `evaluate.py` held-out 분리(리뷰 #6). 그 전까지 판정은 train.log Test Accuracy.
+5. CI 커버리지 — classifier 최상단 tflite import 구조 해소 후 test_classifier 등 3종 CI 편입(리뷰 #13).
 
 ## 5. 책임 분담 (현재 기록)
 
@@ -357,6 +371,7 @@ tmux new -d -s ksl "cd ~/Desktop/KSL-LLM-IoT && DISPLAY=:0 KSL_HEADLESS=0 .venv/
 
 | 날짜 | 작성자 | 내용 |
 |------|--------|------|
+| 2026-06-11 | 이성준 + Claude (Fable 5) | PR #9 develop 머지 반영(§1.1·§1.3), 머지 전 전수 리뷰 15건(PR #9 코멘트), §1.6 **G6 좌표 비등방성 갭** 추가, §4.5 리뷰 후속 백로그 신설, §4.1 판정 지표를 train.log Test Accuracy로 명시 |
 | 2026-06-11 | 이성준 + Claude (Fable 5) | §1.6 신설 — 학습 데이터↔런타임 도메인 갭 전수 정리(G1~G5), 백로그 증강 2종(low-FPS 시뮬레이션·presence dropout), 주범 역추적 신호. §4.1 판정 경로를 갭별 분기로 확장 |
 | 2026-06-11 | 이성준 + Claude (Opus 4.8) | 전면 개정 — RPi 실기 통합(§1.2), 시간 리샘플링(§1.4), 실기 진단·과신 대응(§2 2-R~2-T), §4를 현 시점 크리티컬 패스로 교체 |
 | 2026-06-10 | 이성준 + Claude (Opus 4.8) | 출력 이중화: Gemini가 (한국어, 영어) 두 줄 생성 — TTS=한국어/LCD·GUI=영어(KSL_LABELS_EN), LCD ASCII 안전망. 운용 모델(30클래스, 전수 0.95) 서버 학습·RPi 배포 완료 |
