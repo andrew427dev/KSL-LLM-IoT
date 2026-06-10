@@ -8,8 +8,10 @@ diagnose_live.py
   - top1이 정답인데 확률이 낮다 → 분포 차이 (임계값/데이터 보강 검토)
   - top3에 정답이 없다 → 모델 일반화 실패 또는 동작 차이
 
+DISPLAY가 있으면(VNC 등) 미리보기 창에 랜드마크와 top-3을 표시한다.
+
 Usage (RPi):
-    .venv/bin/python tools/diagnose_live.py [지속시간초=180]
+    DISPLAY=:0 .venv/bin/python tools/diagnose_live.py [지속시간초=180]
 """
 import sys
 import time
@@ -22,7 +24,7 @@ import numpy as np
 
 from src.hand_tracker import HandTracker
 from src.classifier import KSLClassifier
-from config.settings import KSL_LABELS, CAMERA_INDEX
+from config.settings import KSL_LABELS, KSL_LABELS_EN, CAMERA_INDEX
 
 
 def main():
@@ -37,6 +39,8 @@ def main():
     tracker = HandTracker()
     frames = detected = 0
     t0 = time.time()
+    show = bool(os.environ.get("DISPLAY"))
+    overlay = ""
 
     print(f"[Diag] 시작 — {duration:.0f}초 동안 top-3 출력 "
           f"(시간 리샘플 적용, 임계값 무시)", flush=True)
@@ -68,6 +72,21 @@ def main():
                 + "  ".join(f"{KSL_LABELS[i]}={p[i]:.2f}" for i in top),
                 flush=True,
             )
+            overlay = "  ".join(
+                f"{KSL_LABELS_EN.get(KSL_LABELS[i], '?')}:{p[i]:.2f}" for i in top
+            )
+
+        if show:
+            tracker.draw_landmarks(frame)
+            cv2.putText(frame, f"hand: {'O' if lm is not None else '-'}",
+                        (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8,
+                        (0, 255, 0) if lm is not None else (0, 0, 255), 2)
+            if overlay:
+                cv2.putText(frame, overlay, (10, 65),
+                            cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 255, 0), 2)
+            cv2.imshow("KSL Diagnose", frame)
+            if cv2.waitKey(1) & 0xFF == ord("q"):
+                break
 
     fps = frames / max(time.time() - t0, 1e-6)
     print(f"[Diag] 종료 — 손 검출 {detected}/{frames} "
