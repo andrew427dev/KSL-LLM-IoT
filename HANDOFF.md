@@ -73,6 +73,8 @@ RPi 실기 통합 (2026-06-10/11, USB 웹캠 + 운용 모델):
 - 손목간 벡터 = (우손목−좌손목)/두 손 scale 평균. 양손 단어의 두 손 상대 위치 신호 보존. 한 손이라도 부재면 0.
 - 미감지 손은 zero + presence flag 0. 양손 모두 미감지된 프레임은 시퀀스 누락(`extract_landmarks()` None). 분류기는 연속 `NO_HAND_RESET_FRAMES`(10) 미검출 시 버퍼를 비운다(stale 추론 방지).
 - **시간 정규화 (2026-06-11)**: 런타임 FPS는 환경 의존(RPi 4B + MediaPipe 실측 8-9.5FPS — 추론이 병목, 카메라는 30FPS). 분류기는 (timestamp, vector) 버퍼에서 **최근 1.0초(`SEQUENCE_LENGTH/TRAIN_FPS`)를 30포인트로 선형 보간**해 학습 분포(30fps 영상)와 시간 창을 정합한다 (`src/classifier.py:_resample_window`). 프레임 수 기반 버퍼는 저FPS에서 1초 동작을 ~4초 창으로 왜곡 — 실기 인식 실패의 1차 원인이었다.
+- **잔여 FPS 영향 (보정 후에도 실재)**: ① 정보 밀도 — 1초 창에 실측 8~9프레임뿐, 보간은 형태만 복원하고 빠른 동작의 고주파 성분은 누락 ② 저가 웹캠 모션 블러 → 랜드마크 노이즈. 단, 보정 후 진단에서 출력이 불확실 분산이 아니라 **유사 의미 단어로 1.00 쏠림**(밥→배고프다·주다) — 입력 붕괴가 아닌 도메인 갭 패턴. 주범 판정은 16명 재학습의 held-out 시연자 정확도(=FPS 무관한 순수 일반화 측정)로 한다.
+- **FPS 상승 백로그**: MediaPipe 신형 tasks API 전환 (legacy solutions 대비 RPi 고속화 보고 다수, 마이그레이션 비용 중간) — 16명 재학습 후에도 인식 부족 시 착수.
 - MediaPipe handedness는 *입력이 거울 모드(selfie)임을 가정* — `main.py`/`collect_data.py`가 `cv2.flip(frame, 1)` 후 호출하므로 'Left' = 사용자의 해부학적 왼손. `extract_landmarks(frame, mirrored=False)`로 호출하면 라벨을 swap한다.
 - 한 손 단어(예: "안녕", "주세요" 중 한 손 위주 동작)는 시연자가 자신의 **주손**으로 자연스럽게 수행한다 — 왼손잡이는 LEFT에, 오른손잡이는 RIGHT에 수집된다. `model/augment.py:flip_horizontal`이 슬롯·flag swap을 수행하므로 학습 데이터엔 양쪽 분포가 자연스럽게 채워진다. 단 flip은 **방향 의존 수어를 제외한 `FLIP_SAFE_LABELS`만 opt-in**. **억지로 비주손 시연을 강요하지 않는다**.
 - handedness 신뢰도: `HANDEDNESS_SCORE_THRESHOLD`(settings.py, 기본 0.7, `.env` 오버라이드) 미만의 손은 라벨 대신 **x좌표 fallback**(거울모드에서 작은 x = 좌손)으로 슬롯 배정. 두 손이 동일 라벨로 분류되는 충돌 케이스는 score 낮은 쪽을 반대편으로 재배정하며 stderr에 warning을 출력한다.
