@@ -15,7 +15,9 @@ import sys
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from src.hand_tracker import HandTracker
-from config.settings import KSL_LABELS, SEQUENCE_LENGTH, CAMERA_INDEX
+from config.settings import (
+    KSL_LABELS, SEQUENCE_LENGTH, CAMERA_INDEX, PRESENCE_FLAG_START,
+)
 
 
 def collect(word, num_samples, output_dir="data/landmarks"):
@@ -52,6 +54,16 @@ def collect(word, num_samples, output_dir="data/landmarks"):
                     cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
         cv2.putText(frame, status, (10, 65),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 255, 0), 2)
+
+        # 좌/우 presence flag 라이브 표시 — 어느 손이 잡히는지 즉시 확인
+        if landmarks is not None:
+            lp = landmarks[PRESENCE_FLAG_START] > 0.5
+            rp = landmarks[PRESENCE_FLAG_START + 1] > 0.5
+            hands_status = f"Hands  L:{'O' if lp else '-'}  R:{'O' if rp else '-'}"
+        else:
+            hands_status = "Hands  L:-  R:-"
+        cv2.putText(frame, hands_status, (10, 135),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (200, 200, 255), 2)
 
         if collecting and landmarks is not None:
             sequence_buffer.append(landmarks)
