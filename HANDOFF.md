@@ -143,6 +143,25 @@ python convert_aihub.py --dataset /path/to/aihub/dataset --stride 10 --exact
 - z 상관 0.577은 MediaPipe 단안 추정 z의 한계 — 방향 일치하는 보조 신호로 유효. ToF 카메라 불필요.
 - 스케일 차이는 feature_format의 intra-hand scale 정규화가 흡수. 데이터셋 버전 변경 시 검증 스크립트를 재실행한다.
 
+### 1.6 학습 데이터 ↔ 런타임 입력 도메인 갭 전수 정리 (2026-06-11)
+
+131차원 벡터 조립은 `src/feature_format.py` 단일 소스를 추론(`hand_tracker.py`)·변환(`convert_aihub.py`)이 공유하므로 **전처리 코드 차원의 train/serve skew는 구조적으로 차단**되어 있다(§1.4). 잔여 불일치는 전부 *동일한 함수에 들어가는 입력 값의 통계 분포 차이* — 즉 센서 도메인 갭이다. 실기 인식률 미달(§1.2)의 원인 후보를 전수 정리한다.
+
+| # | 갭 | 학습 데이터 (AI Hub) | 런타임 (RPi) | 대응 상태 |
+|---|----|---------------------|--------------|-----------|
+| G1 | z축 품질 | 멀티뷰 3D 복원 z (정밀) | MediaPipe 단안 추정 z — 동일 영상 상관 **0.577** (x=0.954, y=0.982). z 성분은 131차원 중 43개(33%) | `z_jitter` 증강(`model/augment.py`) — 16명 재학습 반영 중. 단 jitter는 스케일·노이즈만 모사, 단안 z의 구조적 바이어스는 미커버 |
+| G2 | 시간 정보 밀도 | 30fps 실측 30프레임 (독립 측정 30개) | 실측 8~9프레임을 30포인트로 **선형 보간**(`classifier.py:_resample_window`) — 저역 필터라 빠른 동작의 고주파 성분 소실, "구간별 직선" 궤적은 학습 분포에 없는 형태 | **대응 없음** — 백로그 증강 ① 참조. `time_warp`(±15% 속도 변화)는 이 변형을 모사하지 못함 |
+| G3 | 검출 실패·handedness 노이즈 | 멀티뷰 복원이라 양손 상시 존재, 좌우 구분 ground-truth 수준 | 저FPS+모션 블러로 미검출 빈발(한 손만 잡히는 프레임), handedness 오분류 시 슬롯 스왑·x좌표 fallback 개입(`hand_tracker.py`) — presence flag 패턴 자체가 학습 분포 밖 | **대응 없음** — 백로그 증강 ② 참조 |
+| G4 | 시연자 분포 | 전문 수어자 (1차 모델은 3명 과적합), 동작 크고 표준 속도 | 실사용자 — 동작 작고 속도·정확도 상이 | 16명 재학습 진행 중(§4.1). 잔여분은 본인 데이터 혼합(§4.2) |
+| G5 | 과신 → threshold 무력화 | 좁은 시연자 분포 학습 → 전 예측 ~1.00 | `CONFIDENCE_THRESHOLD=0.85`가 오인식을 거르지 못함 | label smoothing 0.1(`train.py`) — 16명 재학습 반영 중 |
+
+**백로그 증강 (G2·G3 직접 공략 — 학습 데이터를 런타임처럼 열화):**
+
+1. **low-FPS 시뮬레이션**: 30프레임 시퀀스를 랜덤 8~10포인트로 다운샘플 후 다시 30포인트로 선형 보간 — 런타임 입력의 smoothing 특성을 그대로 재현. `classifier._resample_window`와 동일 수식 재사용 가능.
+2. **presence dropout**: 랜덤 구간에서 한 손 슬롯을 zero + flag 0으로 — MediaPipe 미검출 깜빡임 패턴 재현. feature_format 불변식(부재 손=zero, wrist_vec=0)은 기존 `time_warp` 복원 코드와 동일 규칙 적용.
+
+**주범 역추적 신호 (16명 재학습 후 재진단 시):** 특정 *의미 유사 단어쌍* 혼동이 잔존하면 G1·G4(도메인·시연자 갭), *빠른 동작 단어만* 일관 오류면 G2(보간 smoothing)가 주범 — `tools/diagnose_live.py` 결과를 단어별 오류 패턴으로 분류해 판정한다.
+
 ---
 
 ## 2. 환경 제약 — 함정과 해결법
@@ -260,7 +279,7 @@ bash scripts/fetch_model.sh /tmp/m && scp /tmp/m/ksl_model.tflite rpi:Desktop/KS
 ssh rpi 'cd ~/Desktop/KSL-LLM-IoT && tmux kill-session -t diag 2>/dev/null; tmux new -d -s diag "DISPLAY=:0 .venv/bin/python tools/diagnose_live.py 300 > /tmp/ksl_diag.log 2>&1"'
 ```
 
-판정: top-3에 수행 단어가 들어오고 확신 분포가 정상화(0.3~0.9 분포)되면 데모 시나리오 확정. 미달이면 4.2.
+판정: top-3에 수행 단어가 들어오고 확신 분포가 정상화(0.3~0.9 분포)되면 데모 시나리오 확정. 미달이면 §1.6 주범 역추적 신호로 잔여 갭을 판별한 뒤 — G2·G3이면 백로그 증강(low-FPS 시뮬레이션·presence dropout) 추가 재학습, G4이면 4.2 본인 데이터 혼합.
 
 ### 4.2 (조건부) 본인 데이터 혼합
 
@@ -338,6 +357,7 @@ tmux new -d -s ksl "cd ~/Desktop/KSL-LLM-IoT && DISPLAY=:0 KSL_HEADLESS=0 .venv/
 
 | 날짜 | 작성자 | 내용 |
 |------|--------|------|
+| 2026-06-11 | 이성준 + Claude (Fable 5) | §1.6 신설 — 학습 데이터↔런타임 도메인 갭 전수 정리(G1~G5), 백로그 증강 2종(low-FPS 시뮬레이션·presence dropout), 주범 역추적 신호. §4.1 판정 경로를 갭별 분기로 확장 |
 | 2026-06-11 | 이성준 + Claude (Opus 4.8) | 전면 개정 — RPi 실기 통합(§1.2), 시간 리샘플링(§1.4), 실기 진단·과신 대응(§2 2-R~2-T), §4를 현 시점 크리티컬 패스로 교체 |
 | 2026-06-10 | 이성준 + Claude (Opus 4.8) | 출력 이중화: Gemini가 (한국어, 영어) 두 줄 생성 — TTS=한국어/LCD·GUI=영어(KSL_LABELS_EN), LCD ASCII 안전망. 운용 모델(30클래스, 전수 0.95) 서버 학습·RPi 배포 완료 |
 | 2026-06-10 | 이성준 + Claude (Opus 4.8) | 물리 버튼 4개(완료+페르소나 3) 도입 — src/button_input.py, 침묵 트리거 기본 비활성(SILENCE_TRIGGER_SEC=0), 페르소나 비프 1/2/3회 피드백, 결선도 재생성 |
