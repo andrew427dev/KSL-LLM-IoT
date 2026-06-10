@@ -25,9 +25,15 @@ from src.classifier import KSLClassifier
 from src.sentence_builder import SentenceBuilder
 from src.tts_output import TTSOutput
 from src.lcd_display import LCDDisplay
+from src.button_input import EVENT_COMPLETE
 from config.settings import (
-    CAMERA_INDEX, CAMERA_WIDTH, CAMERA_HEIGHT, CAMERA_FPS, BUZZER_PIN
+    CAMERA_INDEX, CAMERA_WIDTH, CAMERA_HEIGHT, CAMERA_FPS, BUZZER_PIN,
+    SENTENCE_PERSONAS,
 )
+
+# 페르소나별 비프 횟수 — 정중 1회, 친근 2회, 간단 3회 (선언 순서).
+# 화면을 보지 않아도 어떤 문체가 적용됐는지 소리로 구분한다.
+_PERSONA_BEEPS = {name: i + 1 for i, name in enumerate(SENTENCE_PERSONAS)}
 
 try:
     import RPi.GPIO as GPIO
@@ -179,17 +185,39 @@ class CameraReader:
             self._picam.stop()
 
 
-def beep():
-    """수화 인식 확정 신호음 (비동기). 메인 인식 루프를 블록하지 않는다."""
+def beep(times=1):
+    """신호음 (비동기). 메인 인식 루프를 블록하지 않는다.
+
+    times: 펄스 횟수 — 페르소나 버튼 피드백(정중1/친근2/간단3)처럼
+    화면을 보지 않아도 어떤 입력이 적용됐는지 구분하게 한다.
+    """
     if not GPIO_AVAILABLE:
         return
-    threading.Thread(target=_beep_pulse, daemon=True).start()
+    threading.Thread(target=_beep_pulse, args=(times,), daemon=True).start()
 
 
-def _beep_pulse():
-    GPIO.output(BUZZER_PIN, True)
-    time.sleep(0.05)
-    GPIO.output(BUZZER_PIN, False)
+def _beep_pulse(times=1):
+    for i in range(times):
+        if i:
+            time.sleep(0.1)
+        GPIO.output(BUZZER_PIN, True)
+        time.sleep(0.05)
+        GPIO.output(BUZZER_PIN, False)
+
+
+def _handle_control_event(event, builder, lcd):
+    """물리 버튼·GUI 키 공통 제어 이벤트 처리.
+
+    event: EVENT_COMPLETE(문장 완료) 또는 페르소나 이름("정중"/"친근"/"간단").
+    """
+    if event == EVENT_COMPLETE:
+        if builder.trigger_sentence():
+            beep(1)
+            lcd.write_line(3, "Generating...")
+        return
+    if builder.set_persona(event):
+        beep(_PERSONA_BEEPS.get(event, 1))
+        print(f"[Main] Sentence persona: {event}")
 
 
 def main():
@@ -213,6 +241,15 @@ def main():
     builder = SentenceBuilder()
     tts = TTSOutput()
     lcd = LCDDisplay()
+
+    # 물리 버튼 (RPi): 문장 완료 1 + 페르소나 3. 비-RPi 환경에서는
+    # GUI 모드의 SPACE(완료)·p(페르소나 순환) 키가 같은 역할을 한다.
+    buttons = None
+    if GPIO_AVAILABLE:
+        from src.button_input import ButtonInput
+        buttons = ButtonInput(GPIO)
+        print("[Main] Physical buttons ready "
+              "(complete + persona x3, see USER_MANUAL §1.1).")
 
     cap = CameraReader(index=CAMERA_INDEX,
                        width=CAMERA_WIDTH,
@@ -249,7 +286,13 @@ def main():
                 # 3. 단어 버퍼에 추가 (비동기 — 즉시 반환)
                 builder.add_word(word)
 
-            # 4. 침묵 트리거 확인 (비동기 — 즉시 반환)
+            # 4. 물리 버튼 처리 — 문장 완료 / 페르소나 전환
+            if buttons:
+                event = buttons.poll()
+                if event:
+                    _handle_control_event(event, builder, lcd)
+
+            # 4a. 침묵 트리거 확인 (기본 비활성 — SILENCE_TRIGGER_SEC 참조)
             builder.check_silence_trigger()
 
             # 4b. 완료된 문장 폴링 (Gemini 워커가 끝났을 때만 반환)
@@ -268,8 +311,17 @@ def main():
                 cv2.putText(frame, f"Buffer: {preview}", (10, 30),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
                 cv2.imshow("KSL-LLM-IoT", frame)
-                if cv2.waitKey(1) & 0xFF == ord('q'):
+                key = cv2.waitKey(1) & 0xFF
+                if key == ord('q'):
                     break
+                elif key == ord(' '):
+                    # SPACE = 문장 완료 (물리 완료 버튼과 동일 경로)
+                    _handle_control_event(EVENT_COMPLETE, builder, lcd)
+                elif key == ord('p'):
+                    # 문장 페르소나 순환 (정중 → 친근 → 간단 → ...)
+                    names = list(SENTENCE_PERSONAS)
+                    nxt = names[(names.index(builder.persona) + 1) % len(names)]
+                    _handle_control_event(nxt, builder, lcd)
 
     except KeyboardInterrupt:
         print("\n[Main] Interrupted by user.")

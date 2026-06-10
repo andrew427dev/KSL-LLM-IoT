@@ -17,7 +17,8 @@ from google.genai import types
 
 from config.settings import (
     GEMINI_API_KEY, GEMINI_MODEL, GEMINI_MAX_TOKENS,
-    GEMINI_SYSTEM_PROMPT, TRIGGER_WORD, SILENCE_TRIGGER_SEC
+    GEMINI_SYSTEM_PROMPT, TRIGGER_WORD, SILENCE_TRIGGER_SEC,
+    SENTENCE_PERSONAS, SENTENCE_PERSONA,
 )
 
 
@@ -26,14 +27,11 @@ class SentenceBuilder:
         # GEMINI_API_KEY가 비어있으면 오프라인 모드로 동작. 단어들을
         # 공백으로 이어 붙여 fallback 문장을 만든다. API 키가 있으면
         # 정상 LLM 경로.
+        self.persona = SENTENCE_PERSONA
         if GEMINI_API_KEY:
             self._client = genai.Client(api_key=GEMINI_API_KEY)
-            self._gen_config = types.GenerateContentConfig(
-                system_instruction=GEMINI_SYSTEM_PROMPT,
-                max_output_tokens=GEMINI_MAX_TOKENS,
-                temperature=0.3,
-            )
             self._offline = False
+            self._rebuild_config()
         else:
             print("[SentenceBuilder] No GEMINI_API_KEY in .env. "
                   "OFFLINE MODE: sentences = space-joined word list.")
@@ -46,6 +44,33 @@ class SentenceBuilder:
         self._completed = queue.Queue()
         self._inflight = False
         self._inflight_lock = threading.Lock()
+
+    def set_persona(self, persona):
+        """문장 문체 페르소나를 변경한다 (정중/친근/간단).
+
+        등록되지 않은 이름이면 변경하지 않고 False를 반환한다.
+        오프라인 모드에서는 이름만 보관한다 (출력은 단어 나열이므로 무효과).
+        """
+        if persona not in SENTENCE_PERSONAS:
+            return False
+        self.persona = persona
+        if not self._offline:
+            self._rebuild_config()
+        return True
+
+    def _rebuild_config(self):
+        """현재 페르소나 지시문을 덧붙인 생성 config를 재구성한다.
+
+        워커 스레드는 self._gen_config 참조를 읽기만 하므로
+        참조 교체(원자적)로 동시성 문제가 없다.
+        """
+        self._gen_config = types.GenerateContentConfig(
+            system_instruction=(
+                GEMINI_SYSTEM_PROMPT + "\n" + SENTENCE_PERSONAS[self.persona]
+            ),
+            max_output_tokens=GEMINI_MAX_TOKENS,
+            temperature=0.3,
+        )
 
     def add_word(self, word):
         """
@@ -60,11 +85,25 @@ class SentenceBuilder:
         self.word_buffer.append(word)
         self._last_word_time = time.time()
 
+    def trigger_sentence(self):
+        """버퍼 단어로 즉시 비동기 문장 생성을 시작한다 (물리 버튼·키 입력용).
+
+        버퍼가 비어 있거나 이미 생성 중이면 시작하지 않고 False를 반환한다.
+        """
+        with self._inflight_lock:
+            can_start = bool(self.word_buffer) and not self._inflight
+        if can_start:
+            self._trigger_async()
+        return can_start
+
     def check_silence_trigger(self):
         """
         마지막 단어 인식 후 SILENCE_TRIGGER_SEC 이상 경과하면
-        비동기 문장 생성을 시작한다.
+        비동기 문장 생성을 시작한다. SILENCE_TRIGGER_SEC가 0 이하면
+        비활성 — 물리 완료 버튼(BUTTON_COMPLETE_PIN)이 트리거를 담당한다.
         """
+        if SILENCE_TRIGGER_SEC <= 0:
+            return
         if not self.word_buffer:
             return
         if time.time() - self._last_word_time >= SILENCE_TRIGGER_SEC:
