@@ -148,6 +148,18 @@ def test_sentence_persona_settings():
           f"default={SENTENCE_PERSONA}, labels=30")
 
 
+def test_english_label_mapping():
+    """LCD·GUI 표시용 영어 라벨 — 30개 라벨 전부 매핑되고 ASCII여야 한다.
+    (HD44780 LCD·cv2.putText는 한글 렌더링 불가)"""
+    from config.settings import KSL_LABELS, KSL_LABELS_EN
+    missing = [w for w in KSL_LABELS if w not in KSL_LABELS_EN]
+    assert not missing, f"영어 라벨 누락: {missing}"
+    non_ascii = {w: en for w, en in KSL_LABELS_EN.items()
+                 if not en.isascii() or not en.strip()}
+    assert not non_ascii, f"비ASCII/빈 영어 라벨: {non_ascii}"
+    print(f"[OK] KSL_LABELS_EN: {len(KSL_LABELS_EN)}개 전부 ASCII 매핑")
+
+
 def test_train_has_no_label_encoder():
     """train.py에 sklearn LabelEncoder 사용 금지 — 유니코드 정렬로 학습 인덱스가
     추론(KSL_LABELS[label_idx])과 어긋나는 버그 회귀 가드."""
@@ -194,6 +206,7 @@ if __name__ == "__main__":
     test_augment_flip_horizontal()
     test_hand_tracker_source_markers()
     test_sentence_persona_settings()
+    test_english_label_mapping()
     test_train_has_no_label_encoder()
     test_no_single_hand_hardcoding()
     print("\n=== smoke test PASS ===")

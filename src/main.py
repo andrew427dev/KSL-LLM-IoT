@@ -28,7 +28,7 @@ from src.lcd_display import LCDDisplay
 from src.button_input import EVENT_COMPLETE
 from config.settings import (
     CAMERA_INDEX, CAMERA_WIDTH, CAMERA_HEIGHT, CAMERA_FPS, BUZZER_PIN,
-    SENTENCE_PERSONAS,
+    SENTENCE_PERSONAS, KSL_LABELS_EN,
 )
 
 # 페르소나별 비프 횟수 — 정중 1회, 친근 2회, 간단 3회 (선언 순서).
@@ -281,7 +281,8 @@ def main():
                 word, confidence = result
                 print(f"[Classifier] {word} ({confidence:.1%})")
                 beep()
-                lcd.show_recognition(word, confidence)
+                # LCD는 한글 렌더링 불가 — 영어 라벨로 표시
+                lcd.show_recognition(KSL_LABELS_EN.get(word, "?"), confidence)
 
                 # 3. 단어 버퍼에 추가 (비동기 — 즉시 반환)
                 builder.add_word(word)
@@ -300,8 +301,8 @@ def main():
             if sentence:
                 _output_sentence(sentence, tts, lcd)
 
-            # 5. 버퍼 미리보기 표시
-            preview = builder.get_buffer_preview()
+            # 5. 버퍼 미리보기 표시 (LCD·GUI는 영어 — 한글 렌더링 불가)
+            preview = builder.get_buffer_preview(english=True)
             if preview and not result:
                 lcd.show_buffer(preview)
 
@@ -336,9 +337,11 @@ def main():
 
 
 def _output_sentence(sentence, tts, lcd):
-    print(f"\n[Sentence] {sentence}\n")
-    lcd.show_sentence(sentence)
-    tts.speak(sentence)
+    """(한국어, 영어) 문장 출력 — 음성은 한국어, LCD는 영어(한글 렌더링 불가)."""
+    korean, english = sentence
+    print(f"\n[Sentence] {korean}  /  {english}\n")
+    lcd.show_sentence(english)
+    tts.speak(korean)
 
 
 if __name__ == "__main__":

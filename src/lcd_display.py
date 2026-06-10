@@ -95,6 +95,9 @@ class LCDDisplay:
         if not self.available:
             print(f"[LCD Line {line_num}] {text}")
             return
+        # HD44780은 ASCII만 렌더링 — 비ASCII(한글 등)는 '?'로 치환 (안전망).
+        # 정상 경로에서는 호출자가 이미 영어 텍스트를 전달한다.
+        text = "".join(c if ord(c) < 128 else "?" for c in text)
         text = text.ljust(LCD_NUM_COLS)[:LCD_NUM_COLS]
         self._write_byte(LCD_LINE_ADDR[line_num], LCD_CMD)
         for char in text:
@@ -110,7 +113,7 @@ class LCDDisplay:
         self._write_line_sync(0, "[ Word Buffer    ]")
         self._write_line_sync(1, buffer_preview[:LCD_NUM_COLS])
         self._write_line_sync(2, "")
-        self._write_line_sync(3, "  Hold for [완료]")
+        self._write_line_sync(3, " Press DONE button")
 
     def _show_sentence_sync(self, sentence):
         self._write_line_sync(0, "[ Generated      ]")

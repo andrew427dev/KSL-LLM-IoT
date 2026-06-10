@@ -18,8 +18,13 @@ from google.genai import types
 from config.settings import (
     GEMINI_API_KEY, GEMINI_MODEL, GEMINI_MAX_TOKENS,
     GEMINI_SYSTEM_PROMPT, TRIGGER_WORD, SILENCE_TRIGGER_SEC,
-    SENTENCE_PERSONAS, SENTENCE_PERSONA,
+    SENTENCE_PERSONAS, SENTENCE_PERSONA, KSL_LABELS_EN,
 )
+
+
+def _english_words(words):
+    """한국어 단어 목록 → LCD 표시 가능한 영어 라벨 나열."""
+    return " ".join(KSL_LABELS_EN.get(w, "?") for w in words)
 
 
 class SentenceBuilder:
@@ -111,7 +116,8 @@ class SentenceBuilder:
 
     def poll_sentence(self):
         """
-        완료된 문장이 있으면 반환, 없으면 None.
+        완료된 문장이 있으면 (한국어, 영어) 튜플 반환, 없으면 None.
+        한국어는 TTS 음성용, 영어는 LCD·GUI 표시용 (한글 렌더링 불가 매체).
         메인 루프가 매 프레임 호출한다.
         """
         try:
@@ -119,9 +125,13 @@ class SentenceBuilder:
         except queue.Empty:
             return None
 
-    def get_buffer_preview(self):
-        """LCD 실시간 표시용 현재 버퍼 내용."""
-        return " | ".join(self.word_buffer) if self.word_buffer else ""
+    def get_buffer_preview(self, english=False):
+        """실시간 표시용 현재 버퍼 내용. english=True면 LCD용 영어 라벨."""
+        if not self.word_buffer:
+            return ""
+        if english:
+            return " | ".join(KSL_LABELS_EN.get(w, "?") for w in self.word_buffer)
+        return " | ".join(self.word_buffer)
 
     def _trigger_async(self):
         """워커 스레드를 띄워 Gemini 호출을 시작한다. 동시 호출은 1건만 허용."""
@@ -139,9 +149,14 @@ class SentenceBuilder:
         ).start()
 
     def _generate_worker(self, words):
-        """워커 스레드 본체. Gemini 호출 결과(또는 오프라인 fallback)를 큐에 푸시한다."""
+        """워커 스레드 본체. (한국어 문장, 영어 번역) 튜플을 큐에 푸시한다.
+
+        Gemini는 두 줄(한국어/영어)로 응답한다 — GEMINI_SYSTEM_PROMPT 참조.
+        오프라인·오류 fallback: 한국어 = 단어 나열, 영어 = 영어 라벨 나열.
+        """
+        fallback = (" ".join(words), _english_words(words))
         if self._offline:
-            sentence = " ".join(words)
+            result = fallback
         else:
             prompt = f"수화 단어: [{', '.join(words)}]"
             try:
@@ -150,11 +165,18 @@ class SentenceBuilder:
                     contents=prompt,
                     config=self._gen_config,
                 )
-                sentence = response.text.strip() if response.text else " ".join(words)
+                lines = [l.strip() for l in (response.text or "").splitlines()
+                         if l.strip()]
+                if lines:
+                    korean = lines[0]
+                    english = lines[1] if len(lines) > 1 else _english_words(words)
+                    result = (korean, english)
+                else:
+                    result = fallback
             except Exception as e:
                 print(f"[SentenceBuilder] Gemini API error: {e}")
-                sentence = " ".join(words)
+                result = fallback
 
         with self._inflight_lock:
             self._inflight = False
-        self._completed.put(sentence)
+        self._completed.put(result)
