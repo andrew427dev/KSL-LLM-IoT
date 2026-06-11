@@ -60,7 +60,7 @@ RPi 실기 통합 (2026-06-10/11, USB 웹캠 + 운용 모델):
 ### 1.3 미완료
 
 - [x] KSL_LABELS 30단어 확정 (2026-06-10) — AI Hub 표제어 기준 재구성, `config/settings.py` 반영 (§1.5 WORD 목록)
-- [x] AI Hub 데이터셋: 서버 직접 다운로드 (`scripts/server_download_aihub.sh`, aihubshell) — 시연자 3명분으로 1차 운용 모델 학습 완료(전수 0.95). **시연자 16명 + label smoothing + z_jitter 재학습 진행 중** (자동 체인)
+- [ ] AI Hub 데이터셋: **시연자 16명 다운로드가 무음 실패했었음 (2026-06-12 실증, 함정 2-W)** — done 마커는 16개지만 실데이터는 REAL01~03 × 5각도 = 675 디렉터리뿐. 수정판 스크립트(fail-fast)로 시연자 4~16 재다운로드 필요: 서버에서 `rm /mnt/data/ksl/aihub_full/.signer_{4..16}_done && bash scripts/server_download_aihub.sh 16` (1~3은 유효 마커로 skip)
 - [x] 하드웨어 결선 전부 완료 (LCD/부저/스피커/버튼 4개/USB 웹캠)
 - [x] Gemini API 키 등록 (RPi .env) — 실호출 검증
 - [ ] **실기 인식률 확보** — 16명 재학습 결과로 판단. 미달 시 본인 데이터 수집 혼합(collect_data를 시간 리샘플 방식으로 수정 필요 — 미착수)
@@ -198,6 +198,8 @@ python convert_aihub.py --dataset /path/to/aihub/dataset --stride 10 --exact
 | 2-T | ssh로 RPi 원격 명령이 간헐 무출력 exit 255 | nohup & 백그라운드 + 와이파이 절전/전환 | 장기 실행은 `tmux new -d -s <name> "..."`로 분리, 실행과 확인을 별도 ssh로 |
 | 2-U | GPU 체인이 exit 0인데 label smoothing 등 신규 코드가 미반영된 채 학습됨 (2026-06-11 16명 재학습에서 실제 발생) | `deploy_code.sh` tar 배포가 추적 파일을 덮어써 서버 작업트리가 전면 dirty → 체인의 `git pull`이 무음 실패 (ad-hoc 체인이 pull 종료코드 미검사, 출력도 미로깅) | 체인은 `scripts/chain_train.sh` 사용 — `fetch` + `reset --hard origin/develop`(dirty 면역) + 학습 전 코드 표지 grep 검증 + `set -euo pipefail`. run_training.sh도 시작 시 `git log -1`을 로그에 남김 |
 | 2-V | GPU pod 재시작 후 ssh 키 거부 + `git`·`python3` command not found, venv 실행 불가 (2026-06-11 실제 발생) | overlay 루트 소실 — `/root/.ssh/authorized_keys`·apt 패키지(git·unzip·curl)·**시스템 python3.10**까지 사라짐. venv는 시스템 파이썬 심링크라 함께 무력화 | ① `ssh-copy-id -p 30007 -i ~/.ssh/id_ed25519_gpu.pub root@...`(비밀번호 1회) ② `apt-get install -y git unzip curl python3.10 python3.10-venv` ③ `python3.10 -m venv --upgrade /mnt/data/ksl/ksl-venv` — site-packages(4.8G)는 영구볼륨에 보존되어 **TF 재설치 불필요** |
+| 2-W | "시연자 16명" 학습인데 16160 샘플(=3명분 4040×4)로 변화 없음, held-out이 원본 64%를 점유 | **16명 다운로드 무음 실패 실증** (2026-06-12): 구버전 다운로드 스크립트가 unzip 오류를 마스킹한 채 zip 삭제·마커 무조건 touch — done 마커 16개 vs 실데이터 REAL01~03뿐. 다운로드 로그의 "누적 675개"가 시연자 4부터 평탄했으나 미검출 | 마커만 믿지 말 것 — **시연자 분포를 직접 검수**: `find <dataset> -type d -name "NIA_SL_WORD*" \| grep -oE "REAL[0-9]+" \| sort \| uniq -c`. 재다운로드는 가짜 마커 삭제 후 수정판(PR #10, fail-fast) 스크립트로 |
+| 2-X | rm 가드가 정상 데이터셋에서 "키포인트 없음" 오탐 중단 (2026-06-11 재학습 런치 2회 연속) | ① find maxdepth 4가 시연자 중간 디렉터리(`WORD/<시연자>/NIA_SL_WORD*`, 깊이 5)를 못 봄 ② 수정 후에도 `set -o pipefail`에서 `find \| grep -q`는 grep이 파이프를 먼저 닫으면 find가 SIGPIPE(141)로 실패 — **매치가 많을수록 오탐** | maxdepth 6 + `find -print -quit` 명령 치환으로 교체 (873ed56). 교훈: pipefail 스크립트에서 `\| grep -q` 조합 금지 |
 
 ---
 
@@ -273,25 +275,31 @@ KSL_HEADLESS=1 python src/main.py
 
 ## 4. 다음 작업 (2026-06-11 기준, 마감 6/22)
 
-### 4.1 즉시 — 재학습 사이클 (리뷰 백로그 머지 후)
+### 4.1 즉시 — 시연자 4~16 재다운로드 → 재학습 사이클
 
-16명 체인(2026-06-11 종료 exit 0)은 **함정 2-U로 label smoothing·z_jitter 미반영 코드로 학습됨** — 산출 모델은 판정에 사용하지 않는다. 데이터 자체(시연자 16명분, 30클래스 전수 존재·최소 65시퀀스 검수 완료)는 서버에 유효하므로 재학습만 다시 수행한다:
+경과: ① 2-U 체인(구코드 학습)은 무효 ② PR #10 머지 후 체인(873ed56)은 **정상 완주** (2026-06-11, exit 0 + held-out 평가 동작 확인) — held-out Test Accuracy **0.3622**. 단 함정 **2-W**로 실데이터가 시연자 3명뿐이라 train=REAL03 1명 / test=REAL01·02 구도 — **16명 판정치가 아닌 참고치** (1명 학습 모델의 타인 일반화 수준). 현재 경로:
 
 ```bash
-# 1) 리뷰 백로그 브랜치 머지 후 — 서버에서 체인 실행
-ssh -p 30007 root@cscloud.gpu3.hufs.ac.kr
+# 0) (사전) GPU pod 재시작됐으면 함정 2-V 복구 절차 먼저
+# 1) 가짜 done 마커 삭제 + 시연자 4~16 재다운로드 (수정판 — 치명 오류 fail-fast)
+ssh gpu
+rm /mnt/data/ksl/aihub_full/.signer_{4..16}_done
 cd /mnt/data/ksl/KSL-LLM-IoT
+nohup bash scripts/server_download_aihub.sh 16 > /mnt/data/ksl/download3.log 2>&1 &
+# 완료 후 시연자 분포 검수 (마커 신뢰 금지 — 2-W):
+find /mnt/data/ksl/aihub_full -type d -name "NIA_SL_WORD*" | grep -oE "REAL[0-9]+" | sort | uniq -c
+
+# 2) 체인 실행 (fetch+reset → 표지 검증 → 변환→증강→학습→평가)
 nohup bash scripts/chain_train.sh /mnt/data/ksl/aihub_full >> /mnt/data/ksl/training.log 2>&1 &
-# (fetch+reset --hard 동기화 → 코드 표지 검증 → 변환→증강→학습→평가 일괄)
+# 다운로드 PID 종료 대기 후 자동 시작하려면: bash scripts/chain_train.sh <dataset> <download_pid>
 
-# 2) 완료 후 결과 확인 — 판정 지표 = train.log "Test Accuracy"
-#    이제 held-out 시연자 원본 기준 (윈도우·증강 누출 차단, 리뷰 #6 반영)
-grep -E "Chain|Test Accuracy|Held-out" /mnt/data/ksl/training.log | tail -5
+# 3) 완료 확인 — 판정 지표 = train.log "Test Accuracy" (held-out 시연자 원본 기준)
+grep -E "\[Chain\]|Test Accuracy|Held-out" /mnt/data/ksl/training.log | tail -5
 
-# 3) 모델 회수 → RPi 배포 — G6 보정 코드와 모델을 반드시 함께 배포
+# 4) 모델 회수 → RPi 배포 — G6 보정 코드와 모델을 반드시 함께 배포
 bash scripts/fetch_model.sh /tmp/m && scp /tmp/m/ksl_model.tflite rpi:Desktop/KSL-LLM-IoT/model/
 ssh rpi 'cd ~/Desktop/KSL-LLM-IoT && git pull'
-# 4) RPi 재진단 (VNC 미리보기 포함)
+# 5) RPi 재진단 (VNC 미리보기 포함)
 ssh rpi 'cd ~/Desktop/KSL-LLM-IoT && tmux kill-session -t diag 2>/dev/null; tmux new -d -s diag "DISPLAY=:0 .venv/bin/python tools/diagnose_live.py 300 > /tmp/ksl_diag.log 2>&1"'
 ```
 
@@ -396,6 +404,7 @@ tmux new -d -s ksl "cd ~/Desktop/KSL-LLM-IoT && DISPLAY=:0 KSL_HEADLESS=0 .venv/
 
 | 날짜 | 작성자 | 내용 |
 |------|--------|------|
+| 2026-06-12 | 배진규 + Claude (Fable 5) | 체인 완주 — held-out Test Accuracy 0.3622 (3명 데이터 참고치). 함정 **2-W**(16명 다운로드 무음 실패 실증 — 실데이터 REAL01~03뿐, 시연자 분포 직접 검수 규칙)·**2-X**(rm 가드 오탐 2건: maxdepth·pipefail SIGPIPE — 4273972·873ed56 수정) 추가, §4.1을 재다운로드→재학습 경로로 교체 |
 | 2026-06-11 | 배진규 + Claude (Fable 5) | PR #10 머지(develop=cff0c32)·재학습 체인 가동(chain_train.sh, 코드 표지 검증 통과). 함정 **2-V**(pod 재시작 — 키·apt·시스템 python 소실, venv --upgrade 복구 절차) 추가 |
 | 2026-06-11 | 배진규 + Claude (Fable 5) | 리뷰 백로그 일괄 수정(§4.5 1~4): G6 등방 보정, held-out 시연자 평가(`data_split.py`·`holdout.json`), 다운로드 무결성, 가드 3종. **함정 2-U 발견·기록** — 16명 체인이 dirty 트리 pull 무음 실패로 구코드 학습, `chain_train.sh` 신설로 차단. §4.1 재학습 경로 갱신 |
 | 2026-06-11 | 이성준 + Claude (Fable 5) | PR #9 develop 머지 반영(§1.1·§1.3), 머지 전 전수 리뷰 15건(PR #9 코멘트), §1.6 **G6 좌표 비등방성 갭** 추가, §4.5 리뷰 후속 백로그 신설, §4.1 판정 지표를 train.log Test Accuracy로 명시 |
