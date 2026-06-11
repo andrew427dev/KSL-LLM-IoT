@@ -28,7 +28,9 @@ echo "=== [1/5] 매칭 스캔 ==="
 echo "=== [2/5] 키포인트 → CSV 변환 (stride=$STRIDE) ==="
 # rm 가드 (PR #9 리뷰 #7): 데이터셋 경로에 키포인트가 없으면 기존
 # data/landmarks(git 미추적 — 로컬 수집분 포함 가능)를 파괴하기 전에 중단한다.
-if ! find "$DATASET" -maxdepth 4 -type d -name "NIA_SL_WORD*" 2>/dev/null | grep -q .; then
+# maxdepth 6: 실측 레이아웃은 라벨링데이터/REAL/WORD/<시연자>/NIA_SL_WORD* (깊이 5)
+# — 시연자 중간 디렉터리를 maxdepth 4가 놓쳐 오탐 중단했던 사고(2026-06-11) 반영.
+if ! find "$DATASET" -maxdepth 6 -type d -name "NIA_SL_WORD*" 2>/dev/null | grep -q .; then
     echo "ERROR: '$DATASET' 하위에 NIA_SL_WORD* 키포인트 디렉터리가 없다 —" >&2
     echo "       데이터셋 경로 오류로 판단, 기존 data/landmarks 보존을 위해 중단한다." >&2
     exit 1
