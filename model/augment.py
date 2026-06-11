@@ -197,7 +197,10 @@ def augment_label(label: str, factor: int):
         # 각 원본 샘플에 대해 factor개 증강 생성.
         # flip은 FLIP_SAFE_LABELS에 등록된 라벨만 — 그 외에는 time_warp+noise로 대체.
         # z_jitter는 모든 증강에 공통 적용 (z 도메인 갭은 변형과 무관하게 존재).
-        for _ in range(factor):
+        # 파일명 = {원본 stem}__aug{k}.csv — held-out 시연자 분리가 증강본을
+        # 원본 그룹으로 귀속시키는 근거 (model/data_split.py).
+        stem = os.path.splitext(fname)[0]
+        for k in range(factor):
             std = np.random.uniform(0.005, 0.02)
             if flip_ok:
                 augmentations = [
@@ -216,7 +219,7 @@ def augment_label(label: str, factor: int):
             chosen = z_jitter(augmentations[aug_idx % len(augmentations)])
             aug_idx += 1
 
-            out_path = os.path.join(dst_dir, f"aug_{saved:05d}.csv")
+            out_path = os.path.join(dst_dir, f"{stem}__aug{k}.csv")
             np.savetxt(out_path, chosen, delimiter=",")
             saved += 1
 
