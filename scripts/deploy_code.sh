@@ -14,6 +14,7 @@ tar -czf - \
     --exclude='.venv' --exclude='.git' --exclude='__pycache__' \
     --exclude='data' --exclude='.omc' --exclude='.remember' \
     --exclude='docs/superpowers' --exclude='*.tflite' --exclude='*.keras' \
+    --exclude='.env' \
     -C "$REPO_ROOT" . \
   | ssh -p "$PORT" "$HOST" "mkdir -p '$REMOTE_DIR' && tar -xzf - -C '$REMOTE_DIR'"
 

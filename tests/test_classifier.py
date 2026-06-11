@@ -161,6 +161,70 @@ def test_buffer_cleared_after_recognition():
     print("[PASS] test_buffer_cleared_after_recognition")
 
 
+# ── 모델 shape 검증 fail-fast (PR #9 리뷰 #9) ──────────────────
+
+class _FakeInterpreter:
+    """tflite.Interpreter 대역 — __init__ shape 검증 경로 전용."""
+    def __init__(self, in_shape, out_shape):
+        self._in = np.array(in_shape)
+        self._out = np.array(out_shape)
+
+    def allocate_tensors(self):
+        pass
+
+    def get_input_details(self):
+        return [{"index": 0, "shape": self._in}]
+
+    def get_output_details(self):
+        return [{"index": 0, "shape": self._out}]
+
+
+def _patched_classifier(in_shape, out_shape):
+    """tflite.Interpreter와 MODEL_PATH 존재 여부를 패치한 채 생성을 시도한다."""
+    import src.classifier as clf_mod
+    orig_interpreter = clf_mod.tflite.Interpreter
+    orig_exists = clf_mod.os.path.exists
+    clf_mod.tflite.Interpreter = (
+        lambda model_path=None: _FakeInterpreter(in_shape, out_shape)
+    )
+    clf_mod.os.path.exists = lambda p: True
+    try:
+        return clf_mod.KSLClassifier()
+    finally:
+        clf_mod.tflite.Interpreter = orig_interpreter
+        clf_mod.os.path.exists = orig_exists
+
+
+def test_shape_mismatch_input_fails_fast():
+    """구 126차원 모델 로드는 __init__ ValueError — 1초 간격 무한 재시도 방지."""
+    from config.settings import KSL_LABELS
+    try:
+        _patched_classifier((1, SEQUENCE_LENGTH, 126), (1, len(KSL_LABELS)))
+        raise AssertionError("입력 shape 불일치인데 ValueError 미발생")
+    except ValueError as e:
+        assert "126" in str(e)
+    print("[PASS] test_shape_mismatch_input_fails_fast")
+
+
+def test_shape_mismatch_output_fails_fast():
+    """출력 클래스 수 ≠ len(KSL_LABELS)면 ValueError —
+    짧은 KSL_LABELS_OVERRIDE에서 KSL_LABELS[idx] IndexError 크래시 사전 차단."""
+    try:
+        _patched_classifier((1, SEQUENCE_LENGTH, INPUT_DIM), (1, 2))
+        raise AssertionError("출력 shape 불일치인데 ValueError 미발생")
+    except ValueError as e:
+        assert "2" in str(e)
+    print("[PASS] test_shape_mismatch_output_fails_fast")
+
+
+def test_shape_match_loads():
+    """정합 shape면 정상 생성 (_dummy=False) — 검증이 과차단하지 않는지 가드."""
+    from config.settings import KSL_LABELS
+    clf = _patched_classifier((1, SEQUENCE_LENGTH, INPUT_DIM), (1, len(KSL_LABELS)))
+    assert clf._dummy is False
+    print("[PASS] test_shape_match_loads")
+
+
 if __name__ == "__main__":
     test_no_predict_before_window_filled()
     test_predict_after_window_filled()
@@ -171,4 +235,7 @@ if __name__ == "__main__":
     test_stale_buffer_reset_on_no_hands()
     test_no_hand_counter_resets_on_valid_frame()
     test_buffer_cleared_after_recognition()
+    test_shape_mismatch_input_fails_fast()
+    test_shape_mismatch_output_fails_fast()
+    test_shape_match_loads()
     print("\nAll tests done.")
