@@ -32,8 +32,13 @@ cp "$AIHUBSHELL_FIXTURE" .
 # 있으므로 셔임은 시스템 unzip이 없을 때만 테스트 PATH에 설치된다.
 UNZIP_SHIM = '''#!/usr/bin/env python3
 import fnmatch
+import os
 import sys
 import zipfile
+
+forced = os.environ.get("UNZIP_SHIM_FORCE_RC")
+if forced:
+    sys.exit(int(forced))
 
 args = sys.argv[1:]
 dest = "."
@@ -67,8 +72,12 @@ def _make_zip(path, inner_word="1157"):
         z.writestr(f"{name}/{name}_000001_keypoints.json", "{}")
 
 
-def _run_script(tmp, fixture_zip):
-    """스텁 환경에서 스크립트를 시연자 1명 모드로 실행한다."""
+def _run_script(tmp, fixture_zip, force_rc=None):
+    """스텁 환경에서 스크립트를 시연자 1명 모드로 실행한다.
+
+    force_rc: 지정 시 unzip 셔임을 강제 설치하고 모든 unzip 호출이 해당
+    rc로 종료하게 한다 — 디스크 풀(50) 등 재현 불가능한 치명 분기 검증용.
+    """
     dest = os.path.join(tmp, "dest")
     work = os.path.join(tmp, "work")
     os.makedirs(dest, exist_ok=True)
@@ -87,7 +96,7 @@ def _run_script(tmp, fixture_zip):
         f.write(AIHUBSHELL_STUB)
     os.chmod(stub, 0o755)
 
-    if shutil.which("unzip") is None:
+    if shutil.which("unzip") is None or force_rc is not None:
         shim = os.path.join(stub_dir, "unzip")
         with open(shim, "w") as f:
             f.write(UNZIP_SHIM)
@@ -101,6 +110,8 @@ def _run_script(tmp, fixture_zip):
         "AIHUBSHELL_FIXTURE": fixture_zip,
         "PATH": stub_dir + os.pathsep + env["PATH"],
     })
+    if force_rc is not None:
+        env["UNZIP_SHIM_FORCE_RC"] = str(force_rc)
     proc = subprocess.run(
         ["bash", SCRIPT, "1"],
         env=env, capture_output=True, text=True, timeout=60,
@@ -158,8 +169,23 @@ def test_zero_match_zip_fails():
     print("[PASS] test_zero_match_zip_fails")
 
 
+def test_fatal_unzip_rc_fails_and_preserves_state():
+    """디스크 풀(rc=50) 등 0/1/11 외 rc → 치명: exit≠0·zip 보존·마커 미생성.
+    실환경에서 재현 불가능한 rc라 셔임 강제 주입으로 분기를 검증한다."""
+    with tempfile.TemporaryDirectory() as tmp:
+        fixture = os.path.join(tmp, "real_word_keypoint.zip")
+        _make_zip(fixture, inner_word="1157")
+        proc, dest, work = _run_script(tmp, fixture, force_rc=50)
+
+        assert proc.returncode != 0, "rc=50인데 성공으로 처리됨"
+        assert not os.path.exists(os.path.join(dest, ".signer_1_done"))
+        assert _work_zips(work), "치명 오류인데 zip이 삭제됨"
+    print("[PASS] test_fatal_unzip_rc_fails_and_preserves_state")
+
+
 if __name__ == "__main__":
     test_healthy_zip_extracts_and_marks_done()
     test_corrupt_zip_fails_and_preserves_state()
     test_zero_match_zip_fails()
+    test_fatal_unzip_rc_fails_and_preserves_state()
     print("\nAll tests done.")
