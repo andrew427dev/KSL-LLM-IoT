@@ -25,7 +25,7 @@ from config.settings import (
     MODEL_PATH, CONFIDENCE_THRESHOLD, SEQUENCE_LENGTH,
     KSL_LABELS, DUPLICATE_FILTER_SEC, NO_HAND_RESET_FRAMES,
     TRAIN_FPS, LEFT_SLOT_START, RIGHT_SLOT_START,
-    WRIST_VEC_START, PRESENCE_FLAG_START,
+    WRIST_VEC_START, PRESENCE_FLAG_START, FEATURE_DIM,
 )
 
 # 인식 시간 창(초) — 학습 데이터의 시퀀스 길이와 동일한 물리적 시간
@@ -51,6 +51,22 @@ class KSLClassifier:
             self.interpreter.allocate_tensors()
             self.input_details = self.interpreter.get_input_details()
             self.output_details = self.interpreter.get_output_details()
+
+            # shape 검증 fail-fast — 불일치 모델은 시작 시점에 중단한다.
+            # 검증 없이는 구 차원 모델이 1초 간격 무한 재시도 스팸을,
+            # 어휘 수 불일치는 KSL_LABELS[label_idx] IndexError 크래시를 유발한다.
+            in_shape = tuple(int(d) for d in self.input_details[0]['shape'])
+            out_shape = tuple(int(d) for d in self.output_details[0]['shape'])
+            expected_in = (1, SEQUENCE_LENGTH, FEATURE_DIM)
+            expected_out = (1, len(KSL_LABELS))
+            if in_shape != expected_in or out_shape != expected_out:
+                raise ValueError(
+                    f"모델 shape 불일치: input {in_shape} (기대 {expected_in}), "
+                    f"output {out_shape} (기대 {expected_out}). "
+                    f"'{MODEL_PATH}'가 현재 코드(FEATURE_DIM={FEATURE_DIM}, "
+                    f"KSL_LABELS {len(KSL_LABELS)}개)와 다른 버전으로 학습된 모델이다 — "
+                    f"최신 모델 재배포(scripts/fetch_model.sh) 또는 재학습이 필요하다."
+                )
 
         # (timestamp, 131-vector) 버퍼 — 창 길이의 2배 시간을 넉넉히 보관
         self.sequence_buffer = deque(maxlen=int(TRAIN_FPS * WINDOW_SEC * 2) + 10)

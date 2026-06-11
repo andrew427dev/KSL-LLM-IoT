@@ -11,6 +11,7 @@ Usage:
     sklearn LabelEncoder는 유니코드 정렬을 수행해 인덱스가 어긋난다 — 사용 금지.
 """
 
+import json
 import numpy as np
 import os
 import sys
@@ -20,8 +21,12 @@ import pandas as pd
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
 from config.settings import KSL_LABELS, SEQUENCE_LENGTH, FEATURE_DIM, INPUT_SHAPE
+from model.data_split import split_holdout
 
 RANDOM_SEED = 42
+
+# evaluate.py가 동일한 held-out 집합으로 평가하기 위한 분할 기록
+HOLDOUT_MANIFEST = "model/holdout.json"
 
 # KSL_LABELS 원본 순서 기반 인코딩 — classifier.py의 KSL_LABELS[label_idx]와 일치
 LABEL_TO_IDX = {label: i for i, label in enumerate(KSL_LABELS)}
@@ -37,8 +42,12 @@ def load_dataset(landmarks_dir="data/landmarks", augmented_dir="data/augmented")
     data/landmarks/ (원본) + data/augmented/ (증강) 에서 CSV를 로드합니다.
     augmented_dir 가 없거나 비어 있으면 원본만 사용합니다.
     각 CSV: SEQUENCE_LENGTH행 × FEATURE_DIM열 (src/feature_format.py 레이아웃)
+
+    Returns:
+        (X, y, files) — files는 각 샘플의 CSV 경로.
+        held-out 시연자 분리(model/data_split.py)가 파일명에서 그룹을 파싱한다.
     """
-    X, y = [], []
+    X, y, files = [], [], []
 
     dirs_to_load = [landmarks_dir]
     if augmented_dir and os.path.exists(augmented_dir):
@@ -60,6 +69,7 @@ def load_dataset(landmarks_dir="data/landmarks", augmented_dir="data/augmented")
                     if seq.shape == (SEQUENCE_LENGTH, FEATURE_DIM):
                         X.append(seq)
                         y.append(label)
+                        files.append(path)
                 except Exception as e:
                     print(f"[Train] Skip {fname}: {e}")
 
@@ -68,7 +78,7 @@ def load_dataset(landmarks_dir="data/landmarks", augmented_dir="data/augmented")
         if not os.path.exists(os.path.join(landmarks_dir, label)):
             print(f"[Train] Warning: No data found for '{label}'")
 
-    return np.array(X, dtype=np.float32), np.array(y)
+    return np.array(X, dtype=np.float32), np.array(y), files
 
 
 def build_model(num_classes, batch_size=None):
@@ -125,7 +135,7 @@ def train():
     tf.keras.utils.set_random_seed(RANDOM_SEED)
 
     print("[Train] Loading dataset...")
-    X, y_raw = load_dataset()
+    X, y_raw, files = load_dataset()
 
     if len(X) == 0:
         print("[Train] No data found. Please collect data first.")
@@ -135,12 +145,27 @@ def train():
 
     y = encode_labels(y_raw)
 
-    # Train / Val / Test split
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y, test_size=0.15, random_state=RANDOM_SEED, stratify=y
-    )
+    # Test = held-out 시연자 원본 (시연자의 어떤 변형도 train에 비노출 —
+    # 슬라이딩 윈도우·증강 누출 차단). Test Accuracy가 곧 일반화 지표가 된다.
+    train_mask, test_mask, holdout_groups = split_holdout(files, seed=RANDOM_SEED)
+    if train_mask is None:
+        print("[Train] Warning: REAL 시연자 그룹 부족 — 샘플 단위 랜덤 분할 폴백. "
+              "윈도우·증강 누출로 Test Accuracy가 부풀려진다 (판정 지표 사용 금지).")
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.15, random_state=RANDOM_SEED, stratify=y
+        )
+        test_files = []
+    else:
+        X_train, y_train = X[train_mask], y[train_mask]
+        X_test, y_test = X[test_mask], y[test_mask]
+        test_files = [f for f, m in zip(files, test_mask) if m]
+        n_dropped = len(X) - len(X_train) - len(X_test)
+        print(f"[Train] Held-out 시연자: {holdout_groups} — "
+              f"train {len(X_train)} / test {len(X_test)} "
+              f"(held-out 증강본 {n_dropped}개 제외)")
+
     X_train, X_val, y_train, y_val = train_test_split(
-        X_train, y_train, test_size=0.15 / 0.85,
+        X_train, y_train, test_size=0.15,
         random_state=RANDOM_SEED, stratify=y_train
     )
 
@@ -191,6 +216,22 @@ def train():
     # 평가
     test_loss, test_acc = model.evaluate(X_test, y_test_cat)
     print(f"\n[Train] Test Accuracy: {test_acc:.4f}")
+    if holdout_groups:
+        print(f"[Train] (held-out 시연자 {holdout_groups} 원본 기준 — 일반화 지표)")
+        with open(HOLDOUT_MANIFEST, "w", encoding="utf-8") as f:
+            json.dump({
+                "holdout_groups": holdout_groups,
+                "test_files": test_files,
+                "test_accuracy": float(test_acc),
+                "n_train": int(len(X_train)),
+                "n_val": int(len(X_val)),
+                "n_test": int(len(X_test)),
+            }, f, ensure_ascii=False, indent=2)
+        print(f"[Train] Held-out manifest 저장: {HOLDOUT_MANIFEST}")
+    elif os.path.exists(HOLDOUT_MANIFEST):
+        # 랜덤 분할 폴백 — 이전 실행의 manifest가 남으면 evaluate가
+        # 현재 모델과 무관한 집합을 평가하므로 제거한다
+        os.remove(HOLDOUT_MANIFEST)
 
     # TFLite 변환 + 검증
     print("[Train] Converting to TFLite...")

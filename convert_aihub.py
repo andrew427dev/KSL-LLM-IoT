@@ -194,6 +194,16 @@ def make_samples(sequence, window_size, stride):
     return samples
 
 
+def window_filename(dirname, win_idx):
+    """출처 보존 파일명 — held-out 시연자 분리(model/data_split.py)의 전제.
+
+    {키포인트 디렉터리명}__w{NN}.csv 형태로 시연자(REAL01)·각도(F)를
+    파일명에 남긴다. 디렉터리명 기반이라 재변환 시 같은 이름에 덮어써
+    중복 누적이 없다 (구버전 aihub_NNNN.csv는 연번이라 재실행마다 누적).
+    """
+    return f"{dirname}__w{win_idx:02d}.csv"
+
+
 # ── 메인 변환 ─────────────────────────────────────────────────
 
 def scan_only(dataset_root, labels, exact_only=False):
@@ -243,8 +253,6 @@ def convert(dataset_root, output_dir, angles, stride, labels, exact_only=False):
         save_dir = os.path.join(output_dir, label)
         os.makedirs(save_dir, exist_ok=True)
 
-        existing = len([f for f in os.listdir(save_dir) if f.endswith(".csv")])
-        sample_idx = existing
         label_saved = 0
 
         for word_num in word_nums:
@@ -262,10 +270,9 @@ def convert(dataset_root, output_dir, angles, stride, labels, exact_only=False):
                     continue
 
                 samples = make_samples(seq, SEQUENCE_LENGTH, stride)
-                for sample in samples:
-                    fname = os.path.join(save_dir, f"aihub_{sample_idx:04d}.csv")
+                for win_idx, sample in enumerate(samples):
+                    fname = os.path.join(save_dir, window_filename(dirname, win_idx))
                     np.savetxt(fname, sample, delimiter=",")
-                    sample_idx += 1
                     label_saved += 1
 
         total_saved += label_saved

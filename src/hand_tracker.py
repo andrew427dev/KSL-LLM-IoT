@@ -4,6 +4,8 @@ MediaPipe Hands로 양손(좌·우)을 동시에 추출한다.
 
 출력: 한 프레임당 131차원 벡터 (src/feature_format.py 레이아웃 참조)
     [LEFT_63 | RIGHT_63 | wrist_vec_3 | presence_2]
+MediaPipe 정규화 좌표는 비등방(x÷너비, y÷높이)이므로 (w,h,w) 스케일로
+등방 복원 후 조립한다 (HANDOFF §1.6 G6 — 학습 데이터와 기하 정합).
 각 손은 손목(landmark 0) 상대좌표를 intra-hand scale(‖landmark9−landmark0‖)로
 나눠 정규화한다. 미감지 손은 zero + presence=0. 양손 모두 미감지면 None.
 
@@ -59,12 +61,28 @@ class HandTracker:
         """
         rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
         self._last_result = self.hands.process(rgb)
-        return self._build_feature_vector(self._last_result, mirrored=mirrored)
+        h, w = frame.shape[:2]
+        return self._build_feature_vector(
+            self._last_result, mirrored=mirrored, frame_size=(w, h)
+        )
 
-    def _build_feature_vector(self, result, mirrored=True):
-        """MediaPipe 결과 객체 → 131차원 벡터 (테스트에서 fake 객체 주입 가능)."""
+    def _build_feature_vector(self, result, mirrored=True, frame_size=None):
+        """MediaPipe 결과 객체 → 131차원 벡터 (테스트에서 fake 객체 주입 가능).
+
+        frame_size=(w, h): MediaPipe 정규화 좌표는 비등방(x÷너비, y÷높이) —
+        640×480에서 y가 x 대비 4/3배 스케일이라 학습 데이터(AI Hub 등방
+        미터 좌표)와 기하가 어긋난다. (w, h, w) 스케일로 픽셀 단위 등방
+        좌표로 복원한다 (MediaPipe z는 x와 동일 스케일 — w 적용).
+        None이면 입력을 이미 등방인 좌표로 간주해 보정하지 않는다.
+        (PR #9 리뷰 #1, HANDOFF §1.6 G6)
+        """
         if not result.multi_hand_landmarks:
             return None
+
+        axis_scale = None
+        if frame_size is not None:
+            fw, fh = frame_size
+            axis_scale = np.array([fw, fh, fw], dtype=np.float32)
 
         handednesses = result.multi_handedness or []
 
@@ -76,6 +94,8 @@ class HandTracker:
                 [[lm.x, lm.y, lm.z] for lm in hand_landmarks.landmark],
                 dtype=np.float32,
             )
+            if axis_scale is not None:
+                coords = coords * axis_scale
             label, score = None, 0.0
             if i < len(handednesses):
                 c = handednesses[i].classification[0]

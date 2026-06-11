@@ -79,8 +79,12 @@ def get_tracker():
     return _tracker
 
 
-def _build(mp_result, mirrored=True):
-    return get_tracker()._build_feature_vector(mp_result, mirrored=mirrored)
+def _build(mp_result, mirrored=True, frame_size=(640, 480)):
+    """기본 (640,480) — 운용 카메라 해상도로 G6 등방 보정 경로를 검증한다.
+    기존 단언은 x축·부호 기반이라 보정 후에도 동일하게 성립한다."""
+    return get_tracker()._build_feature_vector(
+        mp_result, mirrored=mirrored, frame_size=frame_size
+    )
 
 
 # ── T1: 두 손 happy-path ───────────────────────────────────────
@@ -230,6 +234,48 @@ def test_handedness_conflict_reassignment():
     print("[PASS] test_handedness_conflict_reassignment")
 
 
+# ── G6: 좌표 비등방성 보정 (PR #9 리뷰 #1) ─────────────────────
+
+def _diagonal_hand(w, h):
+    """픽셀 기준 (60, 80) 대각 오프셋(=100px)에 lm9를 둔 fake 손.
+    MediaPipe 정규화 좌표(x÷w, y÷h)로 표현 — 등방 보정 검증용."""
+    wx, wy = 0.5, 0.5
+    pts = [(wx, wy, 0.0)] * 21
+    pts[9] = (wx + 60.0 / w, wy + 80.0 / h, 0.0)
+    return FakeHandLandmarks(pts)
+
+
+def test_anisotropy_correction():
+    """frame_size=(640,480) 주입 시 (w,h,w) 스케일로 등방 복원 —
+    픽셀 (60,80,0)/100px → 정규화 lm9 = (0.6, 0.8, 0)."""
+    w, h = 640, 480
+    mp_result = FakeMediaPipeResult(
+        [_diagonal_hand(w, h)], [FakeHandedness("Left", 0.95)],
+    )
+    out = get_tracker()._build_feature_vector(
+        mp_result, mirrored=True, frame_size=(w, h)
+    )
+    lm9 = out[LEFT_SLOT_START + 9 * 3:LEFT_SLOT_START + 9 * 3 + 3]
+    np.testing.assert_allclose(lm9, [0.6, 0.8, 0.0], atol=1e-5)
+    print("[PASS] test_anisotropy_correction")
+
+
+def test_no_frame_size_skips_correction():
+    """frame_size=None이면 무보정 — 입력을 등방 좌표로 간주 (기존 동작)."""
+    w, h = 640, 480
+    mp_result = FakeMediaPipeResult(
+        [_diagonal_hand(w, h)], [FakeHandedness("Left", 0.95)],
+    )
+    out = get_tracker()._build_feature_vector(
+        mp_result, mirrored=True, frame_size=None
+    )
+    rel = np.array([60.0 / w, 80.0 / h, 0.0], dtype=np.float32)
+    expected = rel / np.linalg.norm(rel)  # 비등방 그대로 ≈ (0.490, 0.872, 0)
+    lm9 = out[LEFT_SLOT_START + 9 * 3:LEFT_SLOT_START + 9 * 3 + 3]
+    np.testing.assert_allclose(lm9, expected, atol=1e-5)
+    print("[PASS] test_no_frame_size_skips_correction")
+
+
 # ── 퇴화 케이스 ────────────────────────────────────────────────
 
 def test_degenerate_hand_dropped():
@@ -263,5 +309,7 @@ if __name__ == "__main__":
     test_one_low_score_fills_empty_slot()
     test_unmirrored_label_swap()
     test_handedness_conflict_reassignment()
+    test_anisotropy_correction()
+    test_no_frame_size_skips_correction()
     test_degenerate_hand_dropped()
     print("\nAll tests done.")

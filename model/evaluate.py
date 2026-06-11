@@ -2,16 +2,23 @@
 evaluate.py
 훈련된 TFLite 모델의 정확도, FPS, 혼동 행렬을 평가합니다.
 
+평가 집합: model/holdout.json(train.py가 기록한 held-out 시연자 원본)이
+있으면 그 집합만 평가한다 — train에 노출되지 않은 시연자라 일반화 지표다.
+manifest가 없으면 전수 평가로 폴백하되, 학습 데이터가 포함되어 수치가
+부풀려지므로 판정에 사용하지 않는다 (PR #9 리뷰 #6).
+
 Usage:
     python model/evaluate.py
 """
 
+import json
 import numpy as np
 import time
 import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import pandas as pd
 from sklearn.metrics import classification_report, confusion_matrix
 import matplotlib.pyplot as plt
 
@@ -20,13 +27,49 @@ try:
 except ImportError:
     import tensorflow.lite as tflite
 
-from model.train import load_dataset
-from config.settings import KSL_LABELS, MODEL_PATH, SEQUENCE_LENGTH
+from model.train import load_dataset, HOLDOUT_MANIFEST
+from config.settings import KSL_LABELS, MODEL_PATH, SEQUENCE_LENGTH, FEATURE_DIM
+
+
+def _load_holdout(manifest_path):
+    """train.py가 기록한 held-out 시연자 원본 CSV만 로드한다."""
+    with open(manifest_path, encoding="utf-8") as f:
+        manifest = json.load(f)
+
+    X, y = [], []
+    skipped = 0
+    for path in manifest.get("test_files", []):
+        label = os.path.basename(os.path.dirname(path))
+        try:
+            seq = pd.read_csv(path, header=None, dtype=np.float32).values
+        except Exception:
+            skipped += 1
+            continue
+        if seq.shape == (SEQUENCE_LENGTH, FEATURE_DIM):
+            X.append(seq)
+            y.append(label)
+        else:
+            skipped += 1
+    if skipped:
+        print(f"[Evaluate] Warning: manifest 파일 {skipped}개 로드 실패 — "
+              f"데이터 디렉터리가 학습 시점과 다르다 (재변환 후 재학습 필요).")
+    return np.array(X, dtype=np.float32), np.array(y), manifest
 
 
 def evaluate():
     print("[Evaluate] Loading model and dataset...")
-    X, y_raw = load_dataset()
+    if os.path.exists(HOLDOUT_MANIFEST):
+        X, y_raw, manifest = _load_holdout(HOLDOUT_MANIFEST)
+        print(f"[Evaluate] Held-out 시연자 {manifest['holdout_groups']} "
+              f"원본 {len(X)}개 평가 — train 비노출 일반화 지표.")
+    else:
+        X, y_raw, _files = load_dataset()
+        print("[Evaluate] Warning: holdout manifest 없음 — 학습 데이터 포함 전수 평가. "
+              "수치가 부풀려지므로 판정에 사용 금지.")
+
+    if len(X) == 0:
+        print("[Evaluate] 평가할 샘플이 없다 — 중단.")
+        return
 
     interpreter = tflite.Interpreter(model_path=MODEL_PATH)
     interpreter.allocate_tensors()

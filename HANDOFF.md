@@ -157,7 +157,8 @@ python convert_aihub.py --dataset /path/to/aihub/dataset --stride 10 --exact
 | G3 | 검출 실패·handedness 노이즈 | 멀티뷰 복원이라 양손 상시 존재, 좌우 구분 ground-truth 수준 | 저FPS+모션 블러로 미검출 빈발(한 손만 잡히는 프레임), handedness 오분류 시 슬롯 스왑·x좌표 fallback 개입(`hand_tracker.py`) — presence flag 패턴 자체가 학습 분포 밖 | **대응 없음** — 백로그 증강 ② 참조 |
 | G4 | 시연자 분포 | 전문 수어자 (1차 모델은 3명 과적합), 동작 크고 표준 속도 | 실사용자 — 동작 작고 속도·정확도 상이 | 16명 재학습 진행 중(§4.1). 잔여분은 본인 데이터 혼합(§4.2) |
 | G5 | 과신 → threshold 무력화 | 좁은 시연자 분포 학습 → 전 예측 ~1.00 | `CONFIDENCE_THRESHOLD=0.85`가 오인식을 거르지 못함 | label smoothing 0.1(`train.py`) — 16명 재학습 반영 중 |
-| G6 | x·y 등방성 (2026-06-11 리뷰 발견) | 멀티뷰 3D 복원 — 등방 미터 좌표 | MediaPipe 좌표는 축별 정규화(x÷너비, y÷높이) — 640×480에서 **y가 x 대비 4/3배 스케일**. intra-hand scale(혼합축 L2 norm)로는 소거 불가. 축별 상관계수는 스케일 불변이라 정합 도구가 탐지 못함(r_y=0.982와 공존) | **대응 없음** — `hand_tracker`에서 (w,h,w) 스케일 보정 1줄, 단 특징 분포가 바뀌므로 **재학습과 동시 적용** (PR #9 리뷰 #1) |
+| G6 | x·y 등방성 (2026-06-11 리뷰 발견) | 멀티뷰 3D 복원 — 등방 미터 좌표 | MediaPipe 좌표는 축별 정규화(x÷너비, y÷높이) — 640×480에서 **y가 x 대비 4/3배 스케일**. intra-hand scale(혼합축 L2 norm)로는 소거 불가. 축별 상관계수는 스케일 불변이라 정합 도구가 탐지 못함(r_y=0.982와 공존) | **(w,h,w) 등방 보정 적용** (`hand_tracker.py:_build_feature_vector`, 2026-06-11) — 런타임을 학습 분포(등방)에 정합. 보정 코드 + 새 모델을 RPi에 **동시 배포**해 재진단 1회로 검증 |
+| G7 | 조음 위치 결손 (2026-06-11 배진규 제기) | AI Hub 키포인트는 hand 21×2 외에 **pose 25관절·face 70점(2D 픽셀·3D 미터 모두, conf 포함)** 제공 — 손-신체 상대 위치 복원 가능 (실측: WORD1509 JSON, 코·목·어깨·골반 앵커 conf 1.00) | 131차원은 손목 상대화가 **조음 위치(손이 몸 어디에 있는가)를 전부 소거** — 손모양 유사·위치 구분 단어쌍(밥/배고프다 등)을 구조적으로 분리 불가. 1차 진단의 밥→배고프다·주다 1.00 혼동과 정합. MediaPipe Hands는 신체 앵커 미제공 | **재진단 게이트** — 위치 구분 쌍 혼동 잔존 시 2차 사이클로 적용. 설계: 얼굴 앵커 상대 손 위치 +4차원(131→135) — 학습=face 키포인트(중심·눈 간격), 런타임=MediaPipe Face Detection(BlazeFace 경량, N프레임 1회). Pose/Holistic은 8~9.5FPS 병목에서 비현실적. 적용 전 `verify_aihub_alignment` 확장으로 도메인 정합 실측 필수 |
 
 **백로그 증강 (G2·G3 직접 공략 — 학습 데이터를 런타임처럼 열화):**
 
@@ -195,6 +196,7 @@ python convert_aihub.py --dataset /path/to/aihub/dataset --stride 10 --exact
 | 2-R | 실기에서 모델이 자신 있게(~1.00) 엉뚱한 단어만 출력 | ① 저FPS(8-9.5)로 30프레임 버퍼가 1초 동작을 ~4초 창으로 왜곡 ② 시연자 3명 과적합의 병적 과신 | ① 시간 리샘플링(§1.4) ② label smoothing 0.1 + z_jitter 증강 + 시연자 16명 (재학습 중) |
 | 2-S | aihubshell: zip이 최상위가 아닌 `004.수어영상/...` 하위에 저장, 컨테이너에 unzip·curl 없음 | 기본 이미지 미포함 + 데이터셋 트리 경로 보존 | `apt-get install unzip curl`, zip 탐색은 find 기반 (`server_download_aihub.sh` 사전 점검 포함) |
 | 2-T | ssh로 RPi 원격 명령이 간헐 무출력 exit 255 | nohup & 백그라운드 + 와이파이 절전/전환 | 장기 실행은 `tmux new -d -s <name> "..."`로 분리, 실행과 확인을 별도 ssh로 |
+| 2-U | GPU 체인이 exit 0인데 label smoothing 등 신규 코드가 미반영된 채 학습됨 (2026-06-11 16명 재학습에서 실제 발생) | `deploy_code.sh` tar 배포가 추적 파일을 덮어써 서버 작업트리가 전면 dirty → 체인의 `git pull`이 무음 실패 (ad-hoc 체인이 pull 종료코드 미검사, 출력도 미로깅) | 체인은 `scripts/chain_train.sh` 사용 — `fetch` + `reset --hard origin/develop`(dirty 면역) + 학습 전 코드 표지 grep 검증 + `set -euo pipefail`. run_training.sh도 시작 시 `git log -1`을 로그에 남김 |
 
 ---
 
@@ -270,20 +272,29 @@ KSL_HEADLESS=1 python src/main.py
 
 ## 4. 다음 작업 (2026-06-11 기준, 마감 6/22)
 
-### 4.1 즉시 (자동 진행 중 — 확인만)
+### 4.1 즉시 — 재학습 사이클 (리뷰 백로그 머지 후)
 
-GPU 서버에서 시연자 16명 다운로드(+13명, ~2.5h) → 자동 체인: 해제 → git pull(label smoothing·z_jitter 반영) → 변환(--exact) → 증강 → 학습 → 평가. 완료 후:
+16명 체인(2026-06-11 종료 exit 0)은 **함정 2-U로 label smoothing·z_jitter 미반영 코드로 학습됨** — 산출 모델은 판정에 사용하지 않는다. 데이터 자체(시연자 16명분, 30클래스 전수 존재·최소 65시퀀스 검수 완료)는 서버에 유효하므로 재학습만 다시 수행한다:
 
 ```bash
-# 결과 확인
-ssh -p 30007 root@cscloud.gpu3.hufs.ac.kr 'grep -E "Chain3|Test Accuracy" /mnt/data/ksl/training.log | tail -3'
-# 모델 회수 → RPi 배포
+# 1) 리뷰 백로그 브랜치 머지 후 — 서버에서 체인 실행
+ssh -p 30007 root@cscloud.gpu3.hufs.ac.kr
+cd /mnt/data/ksl/KSL-LLM-IoT
+nohup bash scripts/chain_train.sh /mnt/data/ksl/aihub_full >> /mnt/data/ksl/training.log 2>&1 &
+# (fetch+reset --hard 동기화 → 코드 표지 검증 → 변환→증강→학습→평가 일괄)
+
+# 2) 완료 후 결과 확인 — 판정 지표 = train.log "Test Accuracy"
+#    이제 held-out 시연자 원본 기준 (윈도우·증강 누출 차단, 리뷰 #6 반영)
+grep -E "Chain|Test Accuracy|Held-out" /mnt/data/ksl/training.log | tail -5
+
+# 3) 모델 회수 → RPi 배포 — G6 보정 코드와 모델을 반드시 함께 배포
 bash scripts/fetch_model.sh /tmp/m && scp /tmp/m/ksl_model.tflite rpi:Desktop/KSL-LLM-IoT/model/
-# RPi 재진단 (VNC 미리보기 포함)
+ssh rpi 'cd ~/Desktop/KSL-LLM-IoT && git pull'
+# 4) RPi 재진단 (VNC 미리보기 포함)
 ssh rpi 'cd ~/Desktop/KSL-LLM-IoT && tmux kill-session -t diag 2>/dev/null; tmux new -d -s diag "DISPLAY=:0 .venv/bin/python tools/diagnose_live.py 300 > /tmp/ksl_diag.log 2>&1"'
 ```
 
-판정: top-3에 수행 단어가 들어오고 확신 분포가 정상화(0.3~0.9 분포)되면 데모 시나리오 확정. 미달이면 §1.6 주범 역추적 신호로 잔여 갭을 판별한 뒤 — G2·G3이면 백로그 증강(low-FPS 시뮬레이션·presence dropout) 추가 재학습, G4이면 4.2 본인 데이터 혼합, 전반 미달이면 G6 등방 보정+재학습(§4.5 ①). **판정 지표는 train.log의 Test Accuracy 사용 — evaluate.log는 학습 데이터 재포함이라 부풀려짐 (§4.5 ④)**.
+판정: top-3에 수행 단어가 들어오고 확신 분포가 정상화(0.3~0.9 분포)되면 데모 시나리오 확정. 미달이면 §1.6 주범 역추적 신호로 잔여 갭을 판별한 뒤 — G2·G3이면 백로그 증강(low-FPS 시뮬레이션·presence dropout) 추가 재학습, G4이면 4.2 본인 데이터 혼합, **손모양 유사·위치 구분 쌍(밥/배고프다·주다 등) 혼동 잔존이면 G7 얼굴 앵커 특징(§1.6)을 2차 사이클로** 적용. G1·G5·G6은 이번 사이클에 반영됨. **판정 지표는 train.log의 Test Accuracy(=held-out 시연자 정확도) 사용**.
 
 ### 4.2 (조건부) 본인 데이터 혼합
 
@@ -309,13 +320,26 @@ tmux new -d -s ksl "cd ~/Desktop/KSL-LLM-IoT && DISPLAY=:0 KSL_HEADLESS=0 .venv/
 
 ### 4.5 PR #9 리뷰 후속 수정 백로그 (2026-06-11 — 전체 15건은 PR #9 리뷰 코멘트)
 
-develop 위 새 feature 브랜치에서 진행. 우선순위:
+`fix/review-backlog-pre-retrain` 브랜치에서 1~4 + 함정 2-U 대응을 일괄 수정 (2026-06-11):
 
-1. **G6 등방 보정** (리뷰 #1, High) — `hand_tracker`에서 랜드마크를 (w,h,w) 스케일 후 `build_feature_vector` 전달. 특징 분포가 바뀌므로 재학습·재진단과 한 사이클로 묶는다.
-2. **다운로드 무결성** (리뷰 #2, High) — `server_download_aihub.sh`의 unzip exit 11(무매칭 정상)과 치명 오류 구분, zip 삭제·done 마커 전 검증. **이번 16명 체인 완료 후 단어별 시퀀스 수 검수 필수**.
-3. 빠른 수정 묶음 — `deploy_code.sh`에 `--exclude='.env'`(리뷰 #8) / `run_training.sh` rm 전 데이터셋 경로 가드(리뷰 #7) / `classifier.__init__` 모델 입출력 shape 검증으로 fail-fast(리뷰 #9).
-4. 평가 신뢰성 — `evaluate.py` held-out 분리(리뷰 #6). 그 전까지 판정은 train.log Test Accuracy.
-5. CI 커버리지 — classifier 최상단 tflite import 구조 해소 후 test_classifier 등 3종 CI 편입(리뷰 #13).
+1. [x] **G6 등방 보정** (리뷰 #1, High) — `hand_tracker` (w,h,w) 스케일. 재학습·재진단과 한 사이클로 적용.
+2. [x] **다운로드 무결성** (리뷰 #2, High) — unzip exit 11/치명 구분, 치명 시 zip 보존·마커 미생성·중단. 16명 데이터 단어별 시퀀스 수 검수는 완료(30클래스 전수, 최소 65).
+3. [x] 빠른 수정 묶음 — `deploy_code.sh --exclude='.env'`(리뷰 #8) / `run_training.sh` rm 전 데이터셋 가드(리뷰 #7) / `classifier.__init__` shape 검증 fail-fast(리뷰 #9).
+4. [x] 평가 신뢰성 — held-out **시연자** 분리(리뷰 #6): `model/data_split.py` 신설, 변환·증강 파일명에 출처 보존, train.py가 `model/holdout.json` 기록, evaluate.py가 그 집합만 평가. train.log Test Accuracy = held-out 시연자 정확도.
+5. [ ] CI 커버리지 — classifier 최상단 tflite import 구조 해소 후 test_classifier 등 CI 편입(리뷰 #13). 신규 테스트 4종(test_data_split·test_source_naming·test_server_download·shape 검증)도 함께. **별도 브랜치**.
+
+### 4.6 접근성·입력 범위 백로그 (2026-06-11 배진규 지시)
+
+1. **LCD 표시 확장 (접근성 — High)**: 주 사용자(수어 화자)는 농인·언어장애인이 대다수 —
+   현재 페르소나 변경 피드백이 **부저 비프(청각)** 라 주 사용자에게 닿지 않는 설계 모순.
+   LCD에 다음을 모두 표기하도록 확장한다: ① 페르소나 변경 시 현재 페르소나,
+   ② 인식된 단어 입력(버퍼 누적 상태), ③ 생성된 문장, ④ 문장 완성(전송/완료) 상태.
+   대상: `src/lcd_display.py`(20×4 줄 배치 설계)·`src/main.py`. 비프는 보조 신호로 유지.
+   develop 위 별도 브랜치로 진행, USER_MANUAL §3 갱신 동반.
+2. **인식 범위 ↔ 데이터 정합 (G7 연계)**: 현 입력(양손만)이 데이터셋이 제공하는 정보
+   범위(pose 25관절·face 70점)보다 좁아 정확한 수어 인식에 불충분하다는 문제 제기 —
+   **이번 16명 재학습을 먼저 테스트하고, 결과를 보고 입력 범위 확장(§1.6 G7 얼굴 앵커
+   +α)을 결정**한다. §4.1 판정 분기의 G7 게이트와 동일 경로.
 
 ## 5. 책임 분담 (현재 기록)
 
@@ -371,6 +395,7 @@ develop 위 새 feature 브랜치에서 진행. 우선순위:
 
 | 날짜 | 작성자 | 내용 |
 |------|--------|------|
+| 2026-06-11 | 배진규 + Claude (Fable 5) | 리뷰 백로그 일괄 수정(§4.5 1~4): G6 등방 보정, held-out 시연자 평가(`data_split.py`·`holdout.json`), 다운로드 무결성, 가드 3종. **함정 2-U 발견·기록** — 16명 체인이 dirty 트리 pull 무음 실패로 구코드 학습, `chain_train.sh` 신설로 차단. §4.1 재학습 경로 갱신 |
 | 2026-06-11 | 이성준 + Claude (Fable 5) | PR #9 develop 머지 반영(§1.1·§1.3), 머지 전 전수 리뷰 15건(PR #9 코멘트), §1.6 **G6 좌표 비등방성 갭** 추가, §4.5 리뷰 후속 백로그 신설, §4.1 판정 지표를 train.log Test Accuracy로 명시 |
 | 2026-06-11 | 이성준 + Claude (Fable 5) | §1.6 신설 — 학습 데이터↔런타임 도메인 갭 전수 정리(G1~G5), 백로그 증강 2종(low-FPS 시뮬레이션·presence dropout), 주범 역추적 신호. §4.1 판정 경로를 갭별 분기로 확장 |
 | 2026-06-11 | 이성준 + Claude (Opus 4.8) | 전면 개정 — RPi 실기 통합(§1.2), 시간 리샘플링(§1.4), 실기 진단·과신 대응(§2 2-R~2-T), §4를 현 시점 크리티컬 패스로 교체 |

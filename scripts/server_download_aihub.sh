@@ -15,7 +15,8 @@ for cmd in unzip curl aihubshell; do
 done
 
 N_SIGNERS="${1:-3}"
-KEY="$(cat /mnt/data/ksl/.aihub_key)"
+KEY_FILE="${KEY_FILE:-/mnt/data/ksl/.aihub_key}"
+KEY="$(cat "$KEY_FILE")"
 DEST="${DEST:-/mnt/data/ksl/aihub_full}"
 WORK="${WORK:-/mnt/data/ksl/aihub_dl}"
 mkdir -p "$DEST/라벨링데이터/REAL/WORD" "$DEST/morpheme" "$WORK"
@@ -55,11 +56,31 @@ for i in $(seq 1 "$N_SIGNERS"); do
 
     # aihubshell은 zip을 데이터셋 트리 경로(004.수어영상/...) 하위에 받고
     # 분할(part) 파일은 자동 병합한다 — find로 깊이 무관하게 탐색한다.
+    #
+    # unzip 종료 코드 계약 (PR #9 리뷰 #2 — 치명 오류 마스킹 금지):
+    #   0=성공, 11=패턴 무매칭(시연자별 WORD 누락 — 정상), 1=경고(허용),
+    #   그 외(3 손상 아카이브, 50 디스크 풀 등)=치명 → zip 보존·마커 미생성·중단.
+    # zip 하나에서 45개 WORD 전부 무매칭이면 zip 구조 이상 — 동일하게 치명.
     while IFS= read -r -d "" z; do
         echo "  [시연자 $i] $(basename "$z") 에서 45개 WORD 선택 해제..."
+        matched=0
         for w in $WORDS; do
-            unzip -o -q "$z" "*WORD${w}_*" -d "$DEST/라벨링데이터/REAL/WORD" 2>/dev/null || true
+            rc=0
+            unzip -o -q "$z" "*WORD${w}_*" -d "$DEST/라벨링데이터/REAL/WORD" || rc=$?
+            case "$rc" in
+                0)  matched=$((matched + 1)) ;;
+                11) : ;;
+                1)  echo "  [시연자 $i] WARN: WORD${w} unzip 경고(rc=1) — 계속" >&2
+                    matched=$((matched + 1)) ;;
+                *)  echo "  [시연자 $i] FATAL: unzip rc=$rc (손상 아카이브·디스크 풀 등)." >&2
+                    echo "  zip 보존: $z — 원인 확인 후 재실행하면 이 시연자부터 재개된다." >&2
+                    exit 1 ;;
+            esac
         done
+        if [ "$matched" -eq 0 ]; then
+            echo "  [시연자 $i] FATAL: 45개 WORD 중 0개 매칭 — zip 구조 이상 의심. zip 보존: $z" >&2
+            exit 1
+        fi
         rm -f "$z"
     done < <(find "$WORK" -name "*keypoint*.zip" -print0)
     touch "$marker"
