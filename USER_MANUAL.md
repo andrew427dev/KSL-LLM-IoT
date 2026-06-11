@@ -187,11 +187,16 @@ python model/augment.py --factor 3
 # 2) LSTM 학습
 python model/train.py
 
-# 3) 산출물: model/ksl_model.tflite
+# 3) (선택) 평가 — 정확도·혼동 행렬·추론 지연
+python model/evaluate.py
+
+# 4) 산출물: model/ksl_model.tflite
 #    → 라즈베리파이의 같은 경로에 복사 (전송 방법은 §5.1 참고)
 ```
 
-학습 → 평가 → 배포 흐름은 **PC에서 학습**, **RPi에서 추론**이 원칙입니다.
+학습 → 평가 → 배포 흐름은 **PC(또는 GPU 서버)에서 학습**, **RPi에서 추론**이 원칙입니다.
+
+학습 로그의 `Test Accuracy`는 학습에 사용되지 않은 시연자(held-out)의 원본 데이터 기준 수치다 — 새 사용자에 대한 일반화 성능을 나타낸다. `model/evaluate.py`는 학습이 기록한 `model/holdout.json`의 동일 집합만 평가하며, 이 파일이 없으면 학습 데이터가 포함된 전수 평가로 동작하므로 수치가 실제보다 높게 나온다 (로그에 경고 출력).
 
 ---
 
@@ -282,6 +287,7 @@ PuTTY → Window → Translation → "Remote character set"을 `UTF-8`로 설정
 | 버튼 1회 눌렀는데 여러 번 동작 | 스위치 채터링 | `BUTTON_DEBOUNCE_MS` 증가 (기본 300) |
 | 스피커에서 재생과 무관하게 "툭툭"·웅웅 잡음 | 증폭 스피커가 RPi USB 5V의 부하 리플을 증폭 (전원 리플, 실측 확인) | 스피커 USB 전원을 RPi가 아닌 **별도 충전기/보조배터리**에 연결. 배경 "쉬-" 잡음은 `config.txt`의 `audio_pwm_mode=2`, `disable_audio_dither=1`로 완화 |
 | 단어 인식이 자꾸 틀림 | 학습 데이터 부족/편향 | 본인 환경에서 추가 데이터 수집 → 재학습 |
+| 시작 직후 `모델 shape 불일치` 오류로 종료 | 구버전 모델 파일 또는 단어 목록(`KSL_LABELS`)이 다른 모델 | 최신 `model/ksl_model.tflite`를 재배포(§5.1) 하거나 현재 단어 목록으로 재학습 |
 | Gemini 응답 없음 | API 키 미설정 / 쿼터 초과 | `.env`의 `GEMINI_API_KEY` 확인, 네트워크 점검 |
 | TTS 무음 | 스피커 라우팅 | `raspi-config` → System Options → Audio |
 | FPS가 낮음 | 해상도 과대 | `.env`의 `CAMERA_WIDTH/HEIGHT` 낮추기 |
@@ -312,6 +318,7 @@ PuTTY → Window → Translation → "Remote character set"을 `UTF-8`로 설정
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-06-11 | 학습 `Test Accuracy`가 held-out 시연자 기준으로 변경(§5) — 일반화 성능 지표. 구버전·단어 불일치 모델은 시작 시 `모델 shape 불일치` 오류로 즉시 종료(§6) |
 | 2026-06-10 | 출력 분리 — 음성은 한국어, LCD·화면은 영어(LCD 한글 미지원). 인식 단어 영어 라벨 표 적용 |
 | 2026-06-10 | 물리 버튼 4개 도입 (§1.1 결선) — 문장 완료 버튼이 기본 트리거가 되고 무동작 자동 문장화(`SILENCE_TRIGGER_SEC`)는 기본 비활성. 문체 버튼 3개(비프 1/2/3회 피드백) 추가 |
 | 2026-06-10 | 문장 생성 문체(페르소나) 기능 추가 — `.env` `SENTENCE_PERSONA`=정중/친근/간단, GUI 모드 `p` 키 순환 (§2.1, §3.2) |
