@@ -88,6 +88,7 @@ nano .env       # GEMINI_API_KEY 등 채우기
 | `CONFIDENCE_THRESHOLD` | 단어 확정 임계 신뢰도 (0~1) | `0.85` |
 | `SEQUENCE_LENGTH` | 시퀀스 프레임 수 | `30` |
 | `SILENCE_TRIGGER_SEC` | 무동작 자동 문장화(초). `0` = 비활성 — 완료 버튼이 트리거 담당 | `0` |
+| `DUPLICATE_FILTER_SEC` | 같은 단어 재인식 차단 창(초) | `3.0` |
 | `LCD_I2C_ADDRESS` | LCD 주소 | `0x27` |
 | `BUZZER_PIN` | 부저 GPIO(BCM) | `17` |
 | `BUTTON_COMPLETE_PIN` | 문장 완료 버튼 GPIO(BCM) | `5` |
@@ -126,7 +127,7 @@ Show your sign...
 1. 카메라 정면에 손이 보이도록 위치합니다.
 2. 등록된 30개 수어 단어 중 하나를 **약 1초간** 수행합니다.
 3. 인식 시 **부저음** + LCD에 단어와 신뢰도가 표시됩니다.
-4. 단어를 이어서 수행하면 버퍼에 누적됩니다.
+4. 단어를 이어서 수행하면 버퍼에 누적됩니다. 같은 단어는 3초(`DUPLICATE_FILTER_SEC`) 이내 재인식이 무시된다 — 동일 단어를 연속 입력하려면 3초 이상 간격을 둔다.
 5. **완료 버튼**(GPIO5)을 누르면 Gemini가 자연어 문장을 만들어 LCD/스피커로 출력한다. "완료" 수어도 동일하게 동작한다. (무동작 자동 문장화는 기본 비활성 — `.env` `SILENCE_TRIGGER_SEC`로 복원 가능)
 6. **출력 분리**: 음성(TTS)은 한국어 문장, LCD·화면 표시는 영어다 — 문자형 LCD(HD44780)는 한글을 렌더링하지 못한다. 인식 단어도 LCD에는 영어 라벨(예: 배고프다→hungry)로 표시된다.
 7. **문체 버튼** 3개로 출력 문체를 즉시 전환한다 — 정중(비프 1회) / 친근(비프 2회) / 간단(비프 3회). 비프 횟수로 화면을 보지 않아도 적용 문체를 확인할 수 있다. 시작 문체는 `.env` `SENTENCE_PERSONA`. 모니터 연결(GUI) 모드에서는 `SPACE` 키 = 완료, `p` 키 = 문체 순환.
@@ -291,7 +292,7 @@ PuTTY → Window → Translation → "Remote character set"을 `UTF-8`로 설정
 | Gemini 응답 없음 | API 키 미설정 / 쿼터 초과 | `.env`의 `GEMINI_API_KEY` 확인, 네트워크 점검 |
 | TTS 무음 | 스피커 라우팅 | `raspi-config` → System Options → Audio |
 | FPS가 낮음 | 해상도 과대 | `.env`의 `CAMERA_WIDTH/HEIGHT` 낮추기 |
-| 같은 단어가 연속 들어감 | 정상 — 1.5초 중복 필터 | `config/settings.py`의 `DUPLICATE_FILTER_SEC` 조정 |
+| 같은 단어가 연속 들어감 | 정상 — 3초 중복 필터 | `.env`의 `DUPLICATE_FILTER_SEC` 조정 |
 
 ---
 
@@ -318,6 +319,7 @@ PuTTY → Window → Translation → "Remote character set"을 `UTF-8`로 설정
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-06-12 | 중복 인식 필터 1.5→3.0초, `.env` `DUPLICATE_FILTER_SEC`로 조정 가능(§2.1·§3.2) — 동작 유지 시 같은 단어 반복 누적 방지 |
 | 2026-06-11 | 학습 `Test Accuracy`가 held-out 시연자 기준으로 변경(§5) — 일반화 성능 지표. 구버전·단어 불일치 모델은 시작 시 `모델 shape 불일치` 오류로 즉시 종료(§6) |
 | 2026-06-10 | 출력 분리 — 음성은 한국어, LCD·화면은 영어(LCD 한글 미지원). 인식 단어 영어 라벨 표 적용 |
 | 2026-06-10 | 물리 버튼 4개 도입 (§1.1 결선) — 문장 완료 버튼이 기본 트리거가 되고 무동작 자동 문장화(`SILENCE_TRIGGER_SEC`)는 기본 비활성. 문체 버튼 3개(비프 1/2/3회 피드백) 추가 |

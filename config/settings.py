@@ -123,7 +123,9 @@ TRIGGER_WORD = "완료"
 # 레이턴시 오차가 커서 물리 버튼(BUTTON_COMPLETE_PIN)으로 대체 (2026-06-10).
 # 복원하려면 .env에 SILENCE_TRIGGER_SEC=3.0
 SILENCE_TRIGGER_SEC = float(os.getenv("SILENCE_TRIGGER_SEC", 0.0))
-DUPLICATE_FILTER_SEC = 1.5  # prevent same word repeated within N seconds
+# 같은 단어 재인식 차단 창(초). 동작을 유지하면 버퍼 리필(~1.5초)마다
+# 같은 단어가 다시 통과하므로, 침묵 트리거(3.0)와 정렬해 한 동작당 한 단어로 제한.
+DUPLICATE_FILTER_SEC = float(os.getenv("DUPLICATE_FILTER_SEC", 3.0))
 
 # ── Hardware: LCD ───────────────────────────────────────
 LCD_I2C_ADDRESS = int(os.getenv("LCD_I2C_ADDRESS", "0x27"), 16)
