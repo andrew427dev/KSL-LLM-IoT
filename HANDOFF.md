@@ -60,10 +60,10 @@ RPi 실기 통합 (2026-06-10/11, USB 웹캠 + 운용 모델):
 ### 1.3 미완료
 
 - [x] KSL_LABELS 30단어 확정 (2026-06-10) — AI Hub 표제어 기준 재구성, `config/settings.py` 반영 (§1.5 WORD 목록)
-- [ ] AI Hub 데이터셋: 16명 다운로드 무음 실패 실증(함정 2-W — 실데이터 REAL01~03뿐) → **시연자 4~16 재다운로드 진행 중** (2026-06-12, 수정판 fail-fast 스크립트, 서버 `download3.log`, 가짜 마커 13개 삭제·aihubshell 재설치 후 재시작). 완료 후 **시연자 분포 직접 검수**(2-W) → chain_train.sh 재학습
+- [x] AI Hub 데이터셋: **16명(REAL01~16) 재다운로드 완료** (2026-06-12, 수정판 fail-fast 스크립트). 시연자 분포 직접 검수(2-W) 통과 — 각 225 dir=3,600, 30/30 단어 매칭, 잔재 0. chain_train.sh 재학습 완주
 - [x] 하드웨어 결선 전부 완료 (LCD/부저/스피커/버튼 4개/USB 웹캠)
 - [x] Gemini API 키 등록 (RPi .env) — 실호출 검증
-- [ ] **실기 인식률 확보** — 16명 재학습 결과로 판단. 미달 시 본인 데이터 수집 혼합(collect_data를 시간 리샘플 방식으로 수정 필요 — 미착수)
+- [x] **실기 인식률 확보** — 16명 재학습 모델 RPi 실기 **27/30 단어 정상·확신 0.3~0.9 건강(1.00 과신 병리 해소)**. 잔존 혼동 밥/배고프다/주다는 G7 스파이크로 위치 부재(G7) 아닌 런타임 손모양 갭으로 판명 → 데모 시나리오 회피 결정(§1.6 G7 검증). future work: 본인 데이터 수집 혼합(§4.2, collect_data 시간 리샘플 수정 선행 — 미착수)
 - [x] PR #9 → develop 머지 (2026-06-11). main 릴리스는 제출 직전 수행
 - [ ] 데모 영상 (`docs/final_report_outline.md` 샷 리스트) · 최종 보고서(PDF ≥10p) · PPT(영어 ≥15슬라이드) — 아웃라인 docs/에 완비
 - [ ] AI Hub API 키 파일: 서버 `/mnt/data/ksl/.aihub_key` (비밀 — 커밋 금지)
@@ -167,6 +167,8 @@ python convert_aihub.py --dataset /path/to/aihub/dataset --stride 10 --exact
 
 **주범 역추적 신호 (16명 재학습 후 재진단 시):** 특정 *의미 유사 단어쌍* 혼동이 잔존하면 G1·G4(도메인·시연자 갭), *빠른 동작 단어만* 일관 오류면 G2(보간 smoothing)가 주범 — `tools/diagnose_live.py` 결과를 단어별 오류 패턴으로 분류해 판정한다. **G6은 전 단어 공통의 상수 기하 왜곡**이므로 held-out 정확도는 높은데 실기 전반이 미달하는 패턴이면 등방 보정+재학습(§4.5 ①)을 우선 적용한다.
 
+**G7 검증 결과 (2026-06-12 스파이크 — 실측으로 G7 보류):** 16명 모델 RPi 실기에서 **27/30 단어 정상·확신 0.3~0.9 건강(1.00 병리 해소)**, 잔존 혼동은 밥/배고프다/주다(특히 배고프다→돕다 0.92). G7 적용 전 스파이크(MP4 부재로 도메인 정합 대신 AI Hub 키포인트의 *분리 가능성* 측정)에서 **손-앵커 위치가 이 3단어를 분리하지 못함**(face/pose 전 쌍 분리도 <0.6; 손 도달 최고높이로는 밥만 부분 시그니처 min‖y‖1.86, 배고프다·주다·돕다는 3~4로 겹침). 반면 이 단어들의 held-out f1는 0.96~0.98 — 모델은 *깨끗한 데이터에선* 손모양으로 구분함. ∴ 주범은 위치 부재(G7)가 아니라 **런타임이 손모양 미세차를 잃는 것(G2 저FPS 6.4·G3 검출노이즈·G4 사용자 실행)**. G7 풀 구현은 며칠 대비 밥 하나만 건질 위험 → 보류. 정공법 = §4.2 본인 데이터(런타임 파이프라인으로 수집→손모양을 RPi가 보는 그대로 학습). 단기 결정: **데모 시나리오로 회피**(잘 되는 27/30 사용).
+
 ---
 
 ## 2. 환경 제약 — 함정과 해결법
@@ -200,6 +202,8 @@ python convert_aihub.py --dataset /path/to/aihub/dataset --stride 10 --exact
 | 2-V | GPU pod 재시작 후 ssh 키 거부 + `git`·`python3` command not found, venv 실행 불가 (2026-06-11 실제 발생) | overlay 루트 소실 — `/root/.ssh/authorized_keys`·apt 패키지(git·unzip·curl)·**시스템 python3.10**까지 사라짐. venv는 시스템 파이썬 심링크라 함께 무력화 | ① `ssh-copy-id -p 30007 -i ~/.ssh/id_ed25519_gpu.pub root@...`(비밀번호 1회) ② `apt-get install -y git unzip curl python3.10 python3.10-venv` ③ `python3.10 -m venv --upgrade /mnt/data/ksl/ksl-venv` — site-packages(4.8G)는 영구볼륨에 보존되어 **TF 재설치 불필요** ④ aihubshell도 소실됨 — 영구 보관본 복사: `cp /mnt/data/ksl/bin/aihubshell /usr/bin/` (보관본 없으면 `curl -o ... https://api.aihub.or.kr/api/aihubshell.do`) |
 | 2-W | "시연자 16명" 학습인데 16160 샘플(=3명분 4040×4)로 변화 없음, held-out이 원본 64%를 점유 | **16명 다운로드 무음 실패 실증** (2026-06-12): 구버전 다운로드 스크립트가 unzip 오류를 마스킹한 채 zip 삭제·마커 무조건 touch — done 마커 16개 vs 실데이터 REAL01~03뿐. 다운로드 로그의 "누적 675개"가 시연자 4부터 평탄했으나 미검출 | 마커만 믿지 말 것 — **시연자 분포를 직접 검수**: `find <dataset> -type d -name "NIA_SL_WORD*" \| grep -oE "REAL[0-9]+" \| sort \| uniq -c`. 재다운로드는 가짜 마커 삭제 후 수정판(PR #10, fail-fast) 스크립트로 |
 | 2-X | rm 가드가 정상 데이터셋에서 "키포인트 없음" 오탐 중단 (2026-06-11 재학습 런치 2회 연속) | ① find maxdepth 4가 시연자 중간 디렉터리(`WORD/<시연자>/NIA_SL_WORD*`, 깊이 5)를 못 봄 ② 수정 후에도 `set -o pipefail`에서 `find \| grep -q`는 grep이 파이프를 먼저 닫으면 find가 SIGPIPE(141)로 실패 — **매치가 많을수록 오탐** | maxdepth 6 + `find -print -quit` 명령 치환으로 교체 (873ed56). 교훈: pipefail 스크립트에서 `\| grep -q` 조합 금지 |
+| 2-Y | 같은 가중치·같은 held-out인데 평가 경로마다 정확도가 다름 — train.py(Keras eval) 0.72 vs evaluate.py(TFLite) 0.94 (2026-06-12 실측, 재변환·CPU 강제로도 재현) | Keras Sequential LSTM 실행 vs TFLite fused LSTM 실행의 **계통적 수치 분기**(둘 다 CPU·동일 가중치에서 22점). held-out처럼 약간 OOD 입력에서 Keras 추론이 불안정하고 TFLite fused 커널이 더 안정적인 것으로 추정 | **RPi·evaluate.py는 TFLite를 돌리므로 배포·보고 정확도 = TFLite(0.94)**. train.py "Test Accuracy"(Keras)는 production에 없는 경로라 판정 지표로 부적합 — **evaluate.py(TFLite) per-class 리포트로 판정**. 향후 train.py가 변환 후 TFLite도 평가해 manifest에 함께 기록하면 일원화 |
+| 2-Z | RPi 재기동 시 `GPIO ... already in use` 경고 + **완료/페르소나 버튼 무반응**·부저 이상 (2026-06-12 데모 리허설 실측) | main.py를 tmux kill/SIGKILL로 강제 종료하면 정상 종료 경로의 `GPIO.cleanup()`이 안 돌아 핀이 점유된 채 다음 인스턴스가 뜬다. 별개로 물리 버튼 결선 불량 가능성도 있음(사용자 제기 — 배선도 점검 대상) | **정상 종료**: GUI는 `q`, tmux는 `tmux send-keys -t <s> C-c` 후 종료(GPIO.cleanup 실행). 재기동 전 `pgrep -af src/main.py`로 **단일 인스턴스** 확인. 완료 버튼 무반응은 단독 점검(버튼 핀 폴링 스크립트)으로 결선 vs 소프트 원인 분리 필요. 모니터링 시 `PYTHONUNBUFFERED=1` — stdout 리다이렉트는 블록버퍼라 `[Classifier]` 인식 로그가 지연된다 |
 
 ---
 
@@ -279,7 +283,7 @@ KSL_HEADLESS=1 python src/main.py
 
 경과: ① 2-U 체인(구코드 학습)은 무효 ② PR #10 머지 후 체인(873ed56)은 **정상 완주** (2026-06-11, exit 0 + held-out 평가 동작 확인) — held-out Test Accuracy **0.3622**. 단 함정 **2-W**로 실데이터가 시연자 3명뿐이라 train=REAL03 1명 / test=REAL01·02 구도 — **16명 판정치가 아닌 참고치** (1명 학습 모델의 타인 일반화 수준).
 
-**상태 (2026-06-12)**: 아래 1)은 **실행됨** — 가짜 마커 삭제 + 재다운로드 진행 중 (PID 45251, `download3.log`, 도중 aihubshell 소실 발견·영구볼륨 재설치 후 재시작). 2)부터 대기 — **2)는 1)의 시연자 분포 검수 통과 후에만** (PID 자동 연결은 다운로드 실패를 구분 못 함):
+**상태 (2026-06-12 — 사이클 완료)**: 16명(REAL01~16, 각 225 dir=3,600) 재다운로드 완료·**3중 검증 통과**(시연자 분포·30/30 단어매칭·`.part`/zip 잔재 0). 체인 완주(a159f36, 표지검증 통과) → **held-out TFLite 0.94**(배포본)/Keras 0.72. RPi 배포 완료(develop@a159f36, G6 보정+가드 포함, 모델 md5 검증·classifier dummy=False). 실기 진단: **27/30 정상·확신 0.3~0.9 건강**, 밥/배고프다/주다 혼동만 잔존 → G7 스파이크로 보류·데모 시나리오 회피 결정(§1.6 G7 검증·§4.6.2). **⚠️ 판정·보고 지표는 evaluate.py(TFLite)이며 train.py(Keras) Test Accuracy가 아니다 — 함정 2-Y(둘이 0.94 vs 0.72로 22점 갈림).** 아래 명령은 재실행 시 참고용 이력:
 
 ```bash
 # 0) (사전) GPU pod 재시작됐으면 함정 2-V 복구 절차 먼저
@@ -327,6 +331,8 @@ tmux new -d -s ksl "cd ~/Desktop/KSL-LLM-IoT && DISPLAY=:0 KSL_HEADLESS=0 .venv/
 ### 4.4 제출물 (6/22)
 
 - 데모 영상·보고서·PPT 아웃라인: `docs/final_report_outline.md`, `docs/presentation_outline.md` — [TBD] 수치만 채우면 집필 가능
+- **데모 리허설 발견 (2026-06-12)**: 인식 양호(부탁87·서다88·아프다93·병원91·의사90·돕다91%). 단 ① **가다→의사 오인**(이 사용자 실행) — 데모 단어는 사용자별 사전 재검증 ② **완료·페르소나 버튼 전부 무반응** — `src/button_input.py`(GPIO5→`EVENT_COMPLETE` 폴링·하강에지·디바운스)와 `src/main.py` 라우팅(`poll()`→`trigger_sentence`) 코드는 **정상 존재 확인**(코드 누락 아님) → 원인은 GPIO 재점유(함정 2-Z) 또는 물리 결선. **단독 버튼 폴링 테스트로 결선 vs 소프트 분리 필요** ③ **`SILENCE_TRIGGER_SEC=3.0`이 멈춤마다 조기 발화 → 문장 단편화**("많이 아","의"). 버튼 정상화 후 RPi `.env`에서 `SILENCE_TRIGGER_SEC=0`(버튼 전용) 권장
+- **배선도 갱신 필요 (`docs/wiring_diagram.png` / `docs/generate_wiring_diagram.py`)**: ① 카메라 CSI(Pi Camera v2) → **USB 웹캠**으로 교체 ② 완료 버튼 GND 표기 물리 30/34 → **물리 6**(사용자 실측). 핀 본체(완료=GPIO5 물리29, 페르소나=GPIO6/13/19, 부저=GPIO17, LCD 0x27)는 settings.py와 일치. GND는 전기적으로 동일(무반응 원인 아님). 재생성: `python docs/generate_wiring_diagram.py` (matplotlib 필요 — 로컬 부재, RPi/서버에서 실행)
 - PR #9 머지 → develop→main 릴리스 → zip 패키징 (`IoT_YourName_StudentID_TermProject.rar`)
 
 ### 4.5 PR #9 리뷰 후속 수정 백로그 (2026-06-11 — 전체 15건은 PR #9 리뷰 코멘트)
@@ -351,6 +357,10 @@ tmux new -d -s ksl "cd ~/Desktop/KSL-LLM-IoT && DISPLAY=:0 KSL_HEADLESS=0 .venv/
    범위(pose 25관절·face 70점)보다 좁아 정확한 수어 인식에 불충분하다는 문제 제기 —
    **이번 16명 재학습을 먼저 테스트하고, 결과를 보고 입력 범위 확장(§1.6 G7 얼굴 앵커
    +α)을 결정**한다. §4.1 판정 분기의 G7 게이트와 동일 경로.
+   → **결정 완료 (2026-06-12)**: 16명 실기 27/30 정상. G7 스파이크(§1.6 G7 검증)에서
+   위치가 잔존 혼동(밥/배고프다/주다)을 분리 못 함이 실측됨 → **G7 보류**. 데모는 잘 되는
+   27단어로 구성(밥/배고프다/주다는 1개만 사용·제외), 입력 범위 확장은 본인 데이터 보강
+   (§4.2)을 우선하는 future work로 이관.
 
 ## 5. 책임 분담 (현재 기록)
 
@@ -406,6 +416,7 @@ tmux new -d -s ksl "cd ~/Desktop/KSL-LLM-IoT && DISPLAY=:0 KSL_HEADLESS=0 .venv/
 
 | 날짜 | 작성자 | 내용 |
 |------|--------|------|
+| 2026-06-12 | 배진규 + Claude (Opus 4.8) | **16명 재학습 완주·RPi 배포** — held-out **TFLite 0.94**(배포본)/Keras 0.72. 데이터: 3,600 keypoint dir(16명×225)→21,710 시퀀스→증강 65,130, held-out=REAL01·02 통째분리(train 76,460/test 2,595). 함정 **2-Y**(Keras LSTM vs TFLite fused LSTM held-out 22점 계통차 — RPi·evaluate.py는 TFLite라 **배포정확도=0.94**, 판정·보고는 TFLite 사용) 추가. RPi 실기: **27/30 정상·확신 0.3~0.9 건강(1.00 병리 해소)**, 밥/배고프다/주다 혼동(배고프다→돕다 0.92), det 57~74%·6.4FPS. **G7 스파이크**: AI Hub서 손-앵커 위치가 3단어 분리 못 함(밥만 부분) → G7 보류, 주범=런타임 손모양(G2/G3/G4). 결정: **데모 시나리오로 회피**, 본인데이터 보강(§4.2) future work |
 | 2026-06-12 | 배진규 + Claude (Fable 5) | 체인 완주 — held-out Test Accuracy 0.3622 (3명 데이터 참고치). 함정 **2-W**(16명 다운로드 무음 실패 실증 — 실데이터 REAL01~03뿐, 시연자 분포 직접 검수 규칙)·**2-X**(rm 가드 오탐 2건: maxdepth·pipefail SIGPIPE — 4273972·873ed56 수정) 추가, §4.1을 재다운로드→재학습 경로로 교체 |
 | 2026-06-11 | 배진규 + Claude (Fable 5) | PR #10 머지(develop=cff0c32)·재학습 체인 가동(chain_train.sh, 코드 표지 검증 통과). 함정 **2-V**(pod 재시작 — 키·apt·시스템 python 소실, venv --upgrade 복구 절차) 추가 |
 | 2026-06-11 | 배진규 + Claude (Fable 5) | 리뷰 백로그 일괄 수정(§4.5 1~4): G6 등방 보정, held-out 시연자 평가(`data_split.py`·`holdout.json`), 다운로드 무결성, 가드 3종. **함정 2-U 발견·기록** — 16명 체인이 dirty 트리 pull 무음 실패로 구코드 학습, `chain_train.sh` 신설로 차단. §4.1 재학습 경로 갱신 |
