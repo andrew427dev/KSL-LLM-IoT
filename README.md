@@ -121,11 +121,11 @@ The word list matches AI Hub sign-language dataset headwords exactly (revised 20
 | SCL | GPIO3 | Pin 5 | I2C LCD SCL |
 | Buzzer signal | **GPIO17** (default `BUZZER_PIN`) | Pin 11 | Active buzzer + |
 | Buzzer GND | — | Pin 9 | Active buzzer − |
-| Complete button | **GPIO5** (`BUTTON_COMPLETE_PIN`) | Pin 29 | Button leg A (leg B → GND Pin 30) |
-| Persona: polite | **GPIO6** (`BUTTON_PERSONA_POLITE_PIN`) | Pin 31 | Button leg A (leg B → GND Pin 30) |
-| Persona: friendly | **GPIO13** (`BUTTON_PERSONA_FRIENDLY_PIN`) | Pin 33 | Button leg A (leg B → GND Pin 34) |
-| Persona: brief | **GPIO19** (`BUTTON_PERSONA_BRIEF_PIN`) | Pin 35 | Button leg A (leg B → GND Pin 34) |
-| Camera | — | CSI port | Pi Camera ribbon |
+| Complete button | **GPIO5** (`BUTTON_COMPLETE_PIN`) | Pin 29 | Button leg A (leg B → GND Pin 6) |
+| Persona: polite | **GPIO6** (`BUTTON_PERSONA_POLITE_PIN`) | Pin 31 | Button leg A (leg B → GND Pin 6) |
+| Persona: friendly | **GPIO13** (`BUTTON_PERSONA_FRIENDLY_PIN`) | Pin 33 | Button leg A (leg B → GND Pin 6) |
+| Persona: brief | **GPIO19** (`BUTTON_PERSONA_BRIEF_PIN`) | Pin 35 | Button leg A (leg B → GND Pin 6) |
+| Camera | — | USB port | USB webcam (`/dev/video0`; CSI Pi Camera also auto-detected) |
 | Audio | — | 3.5mm jack or USB | Speaker |
 
 Wiring diagram: [`docs/wiring_diagram.png`](docs/wiring_diagram.png) (regenerable with `python docs/generate_wiring_diagram.py`).

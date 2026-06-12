@@ -61,7 +61,7 @@ def main():
     ax.set_ylim(0, 9)
     ax.axis('off')
     ax.set_title("KSL-LLM-IoT  Hardware Wiring Diagram\n"
-                 "Raspberry Pi 4B — I2C LCD 20×4 — Pi Camera v2 — Buzzer — "
+                 "Raspberry Pi 4B — I2C LCD 20×4 — USB Webcam — Buzzer — "
                  "Push Buttons ×4 — USB Speaker",
                  fontsize=13, fontweight='bold', pad=14, color='#2c3e50')
 
@@ -76,7 +76,6 @@ def main():
         ("GPIO 17",      rpi_x + 0.15, rpi_y + 1.5),
         ("5V  (Pin 2)",  rpi_x + 0.15, rpi_y + 2.7),
         ("GND (Pin 6)",  rpi_x + 0.15, rpi_y + 1.1),
-        ("CSI Port",     rpi_x + rpi_w/2 - 0.4, rpi_y + 0.2),
         ("USB Port",     rpi_x + rpi_w - 1.2, rpi_y + 2.5),
     ]
     for text, px, py in pins:
@@ -110,11 +109,11 @@ def main():
               C_WIRE_GND, "GND")
 
     # ── 푸시 버튼 ×4 (하단 중앙) ─────────────────────────
-    # 각 버튼: 한쪽 다리 → 해당 GPIO, 다른 다리 → GND(물리 30/34).
+    # 각 버튼: 한쪽 다리 → 해당 GPIO, 다른 다리 → GND(물리 6, 실측 2026-06-12).
     # 내부 풀업 사용 — 외부 저항 불필요, 눌림 = LOW.
     btn_x, btn_y = 4.9, 0.5
     draw_box(ax, btn_x, btn_y, 4.2, 1.3,
-             "Push Buttons ×4  (other leg → GND)\n"
+             "Push Buttons ×4  (other leg → GND Pin 6)\n"
              "Complete=GPIO5(29)  Polite=GPIO6(31)\n"
              "Friendly=GPIO13(33)  Brief=GPIO19(35)",
              C_BTN, fontsize=8)
@@ -122,11 +121,11 @@ def main():
         wx = btn_x + 0.7 + i * 0.95
         draw_wire(ax, wx, btn_y + 1.3, wx, rpi_y, C_WIRE_SIG, gpio_label)
 
-    # ── Pi Camera v2 (상단) ──────────────────────────────
+    # ── USB 웹캠 (상단) ──────────────────────────────────
     cam_x, cam_y = 5.3, 7.2
-    draw_box(ax, cam_x, cam_y, 3.4, 1.2, "Pi Camera Module v2\n(CSI Ribbon Cable)", C_CAM, fontsize=10)
+    draw_box(ax, cam_x, cam_y, 3.4, 1.2, "USB Webcam\n(/dev/video0)", C_CAM, fontsize=10)
     draw_wire(ax, cam_x + 1.7, cam_y, rpi_x + rpi_w / 2, rpi_y + rpi_h,
-              C_WIRE_SIG, "CSI")
+              C_WIRE_SIG, "USB")
 
     # ── USB Speaker (오른쪽) ─────────────────────────────
     spk_x, spk_y = 10.2, 4.5
@@ -154,10 +153,8 @@ def main():
         ("GPIO 17",      "Buzzer (+)"),
         ("GPIO 5/6/13/19", "Buttons: complete/persona x3"),
         ("5V  Pin 2",    "LCD VCC"),
-        ("GND Pin 6",    "LCD GND / Buzzer (–)"),
-        ("GND Pin 30/34", "Button legs"),
-        ("CSI Port",     "Pi Camera v2"),
-        ("USB Port",     "Speaker / Webcam"),
+        ("GND Pin 6",    "LCD GND / Buzzer (–) / Button legs"),
+        ("USB Port",     "Webcam / Speaker"),
     ]
     for i, (pin, desc) in enumerate(rows):
         y_pos = table_y + 1.7 - i * 0.2
