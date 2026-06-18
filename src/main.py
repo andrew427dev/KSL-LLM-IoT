@@ -43,6 +43,10 @@ try:
 except ImportError:
     GPIO_AVAILABLE = False
     print("[Main] RPi.GPIO not available (non-RPi environment)")
+except RuntimeError as e:
+    # 핀 점유/권한 등으로 setmode·setup이 실패해도 임포트 크래시 대신 부저 없이 계속.
+    GPIO_AVAILABLE = False
+    print(f"[Main] GPIO init failed ({e}) — running without buzzer")
 
 
 class CameraReader:
@@ -200,9 +204,13 @@ def _beep_pulse(times=1):
     for i in range(times):
         if i:
             time.sleep(0.1)
-        GPIO.output(BUZZER_PIN, True)
-        time.sleep(0.05)
-        GPIO.output(BUZZER_PIN, False)
+        try:
+            GPIO.output(BUZZER_PIN, True)
+            time.sleep(0.05)
+            GPIO.output(BUZZER_PIN, False)
+        except RuntimeError:
+            # 종료 시 GPIO.cleanup() 이후 데몬 스레드가 늦게 도는 경우 — 조용히 중단.
+            return
 
 
 def _handle_control_event(event, builder, lcd):
@@ -331,6 +339,10 @@ def main():
         if not headless:
             cv2.destroyAllWindows()
         tracker.release()
+        try:
+            lcd.close()  # LCD 워커 스레드 정상 정지 (정의된 종료 API 사용)
+        except Exception:
+            pass
         if GPIO_AVAILABLE:
             GPIO.cleanup()
         print("[Main] System stopped.")

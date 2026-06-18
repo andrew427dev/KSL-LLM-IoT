@@ -153,30 +153,36 @@ class SentenceBuilder:
 
         Gemini는 두 줄(한국어/영어)로 응답한다 — GEMINI_SYSTEM_PROMPT 참조.
         오프라인·오류 fallback: 한국어 = 단어 나열, 영어 = 영어 라벨 나열.
+
+        inflight 플래그는 어떤 경로로 끝나든 finally에서 반드시 해제한다 —
+        한 번의 실패/지연이 이후 모든 문장 트리거를 영구 차단하지 않게 한다.
+        (네트워크 무한 대기에 대한 hard timeout은 genai 클라이언트의
+         HttpOptions(timeout=...)로 설정해야 한다 — 단위는 SDK 버전 의존.)
         """
         fallback = (" ".join(words), _english_words(words))
-        if self._offline:
-            result = fallback
-        else:
-            prompt = f"수화 단어: [{', '.join(words)}]"
-            try:
-                response = self._client.models.generate_content(
-                    model=GEMINI_MODEL,
-                    contents=prompt,
-                    config=self._gen_config,
-                )
-                lines = [l.strip() for l in (response.text or "").splitlines()
-                         if l.strip()]
-                if lines:
-                    korean = lines[0]
-                    english = lines[1] if len(lines) > 1 else _english_words(words)
-                    result = (korean, english)
-                else:
-                    result = fallback
-            except Exception as e:
-                print(f"[SentenceBuilder] Gemini API error: {e}")
+        try:
+            if self._offline:
                 result = fallback
-
-        with self._inflight_lock:
-            self._inflight = False
-        self._completed.put(result)
+            else:
+                prompt = f"수화 단어: [{', '.join(words)}]"
+                try:
+                    response = self._client.models.generate_content(
+                        model=GEMINI_MODEL,
+                        contents=prompt,
+                        config=self._gen_config,
+                    )
+                    lines = [l.strip() for l in (response.text or "").splitlines()
+                             if l.strip()]
+                    if lines:
+                        korean = lines[0]
+                        english = lines[1] if len(lines) > 1 else _english_words(words)
+                        result = (korean, english)
+                    else:
+                        result = fallback
+                except Exception as e:
+                    print(f"[SentenceBuilder] Gemini API error: {e}")
+                    result = fallback
+            self._completed.put(result)
+        finally:
+            with self._inflight_lock:
+                self._inflight = False

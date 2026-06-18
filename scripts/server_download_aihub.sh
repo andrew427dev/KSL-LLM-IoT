@@ -36,6 +36,10 @@ cd "$WORK"
 echo "=== [1] 형태소 매핑 (110MB) ==="
 if [ ! -e "$DEST/.morpheme_done" ]; then
     aihubshell -mode d -datasetkey 103 -filekey "$MORPHEME_KEY" -aihubapikey "$KEY"
+    # aihubshell은 인증 실패·승인 만료 시에도 exit 0을 반환할 수 있다 → zip 0개 무음 실패 사전 차단
+    if [ -z "$(find . -name "*.zip" -print -quit)" ]; then
+        echo "ERROR: 형태소 zip 0개 다운로드 — API 키·승인 상태 확인 후 재실행" >&2; exit 1
+    fi
     find . -name "*.zip" -exec unzip -o -q {} -d "$DEST/morpheme" \; -delete
     touch "$DEST/.morpheme_done"
 fi
@@ -53,6 +57,13 @@ for i in $(seq 1 "$N_SIGNERS"); do
     echo "  [시연자 $i] filekey=$fk 다운로드 중..."
     df -h / | tail -1
     aihubshell -mode d -datasetkey 103 -filekey "$fk" -aihubapikey "$KEY"
+
+    # aihubshell은 인증 실패·승인 만료 시에도 exit 0을 반환할 수 있다(함정 2-W 류).
+    # zip이 0개면 아래 while 루프가 한 번도 안 돌고 marker만 touch돼 무음 실패가 된다 → 사전 차단.
+    if [ -z "$(find "$WORK" -name "*keypoint*.zip" -print -quit)" ]; then
+        echo "  [시연자 $i] FATAL: keypoint zip 0개 다운로드 — API 키·승인·filekey($fk) 확인 후 재실행" >&2
+        exit 1
+    fi
 
     # aihubshell은 zip을 데이터셋 트리 경로(004.수어영상/...) 하위에 받고
     # 분할(part) 파일은 자동 병합한다 — find로 깊이 무관하게 탐색한다.
