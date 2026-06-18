@@ -1,5 +1,5 @@
 # Final Report Outline — KSL-LLM-IoT
-# (PDF ≥10 pages, due 2026-06-22, file: IoT_YourName_StudentID_TermProject.rar)
+# (PDF ≥10 pages, due 2026-06-22, file: IoT_LeeSungjoon_202102467_TermProject.rar)
 
 본 문서는 보고서 작성용 소스 아웃라인이다. 각 절에 들어갈 내용 포인트,
 그림/표 목록, 본 저장소에서 실측·확정된 수치를 정리한다.
@@ -13,7 +13,7 @@
 - [ ] PPT ≥ 15 slides, in English (`docs/presentation_outline.md` 참조)
 - [ ] Presentation 8 min + 2 min Q&A (max 10 min, in English)
 - [ ] Demo video (short, 동작 증명 — "very important")
-- [ ] 1 zipped folder: Demo + PDF + PPT → `IoT_YourName_StudentID_TermProject.rar`
+- [ ] 1 zipped folder: Demo + PDF + PPT → `IoT_LeeSungjoon_202102467_TermProject.rar`
 
 필수 포함 섹션: Project Idea / System Design & Methodology /
 Hardware & Software Details / Results & Contributions / Future Work
@@ -64,7 +64,7 @@ Hardware & Software Details / Results & Contributions / Future Work
 5. **LLM sentence generation** — word list → Gemini 2.5 Flash, persona
    (polite/friendly/brief)별 system prompt, async worker(카메라 루프 비차단),
    offline fallback.
-6. **Methodology of robustness** — confidence 0.85 + 1.5s dedup,
+6. **Methodology of robustness** — confidence 0.85 + 3.0s dedup,
    10-frame no-hand buffer reset, handedness x-fallback, flip 증강의
    방향 의존 수어 opt-out.
 
@@ -73,7 +73,7 @@ Hardware & Software Details / Results & Contributions / Future Work
 **표: H/W 구성** (README 결선표 재사용)
 | Component | Interface | Pin |
 |---|---|---|
-| Pi Camera v1 (OV5647) | CSI | ribbon |
+| USB webcam (/dev/video0, demo) — Pi Camera v1/CSI also supported | USB / CSI | — |
 | I2C LCD 20×4 (0x27) | I2C | GPIO2/3 |
 | Active buzzer | GPIO out | GPIO17 |
 | Push buttons ×4 (complete + persona×3) | GPIO in (internal pull-up) | GPIO5/6/13/19 ↔ GND |
@@ -136,7 +136,7 @@ Hardware & Software Details / Results & Contributions / Future Work
 ## 6. 부록 후보
 
 - 30단어 목록 (USER_MANUAL §3.3)
-- 트러블슈팅 사례집 (HANDOFF §2 — 함정 2-A~2-P, 16건)
+- 트러블슈팅 사례집 (HANDOFF §2 — 함정 2-A~2-Z, 27건)
 - 저장소·PR 이력 (#2~#9)
 
 ---

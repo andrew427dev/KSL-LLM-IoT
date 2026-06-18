@@ -1,8 +1,8 @@
-# HANDOFF — 2026-06-11
+# HANDOFF — 2026-06-12
 
 본 문서는 KSL-LLM-IoT 프로젝트 작업을 이어받는 팀원·차기 세션이 *현재 상태와 다음 단계*를 파악하기 위해 작성된다. 매번의 작업 마무리 시 갱신한다.
 
-- 작성 시점: **2026-06-11** (Week 6 — 최종 제출 6/22)
+- 작성 시점: **2026-06-12** (Week 6 — 최종 제출 6/22)
 - 작성자: 이성준 + Claude (Opus 4.8)
 - 대상: 배진규(팀원), 이후 본인, 차기 세션
 
@@ -202,7 +202,7 @@ python convert_aihub.py --dataset /path/to/aihub/dataset --stride 10 --exact
 | 2-V | GPU pod 재시작 후 ssh 키 거부 + `git`·`python3` command not found, venv 실행 불가 (2026-06-11 실제 발생) | overlay 루트 소실 — `/root/.ssh/authorized_keys`·apt 패키지(git·unzip·curl)·**시스템 python3.10**까지 사라짐. venv는 시스템 파이썬 심링크라 함께 무력화 | ① `ssh-copy-id -p 30007 -i ~/.ssh/id_ed25519_gpu.pub root@...`(비밀번호 1회) ② `apt-get install -y git unzip curl python3.10 python3.10-venv` ③ `python3.10 -m venv --upgrade /mnt/data/ksl/ksl-venv` — site-packages(4.8G)는 영구볼륨에 보존되어 **TF 재설치 불필요** ④ aihubshell도 소실됨 — 영구 보관본 복사: `cp /mnt/data/ksl/bin/aihubshell /usr/bin/` (보관본 없으면 `curl -o ... https://api.aihub.or.kr/api/aihubshell.do`) |
 | 2-W | "시연자 16명" 학습인데 16160 샘플(=3명분 4040×4)로 변화 없음, held-out이 원본 64%를 점유 | **16명 다운로드 무음 실패 실증** (2026-06-12): 구버전 다운로드 스크립트가 unzip 오류를 마스킹한 채 zip 삭제·마커 무조건 touch — done 마커 16개 vs 실데이터 REAL01~03뿐. 다운로드 로그의 "누적 675개"가 시연자 4부터 평탄했으나 미검출 | 마커만 믿지 말 것 — **시연자 분포를 직접 검수**: `find <dataset> -type d -name "NIA_SL_WORD*" \| grep -oE "REAL[0-9]+" \| sort \| uniq -c`. 재다운로드는 가짜 마커 삭제 후 수정판(PR #10, fail-fast) 스크립트로 |
 | 2-X | rm 가드가 정상 데이터셋에서 "키포인트 없음" 오탐 중단 (2026-06-11 재학습 런치 2회 연속) | ① find maxdepth 4가 시연자 중간 디렉터리(`WORD/<시연자>/NIA_SL_WORD*`, 깊이 5)를 못 봄 ② 수정 후에도 `set -o pipefail`에서 `find \| grep -q`는 grep이 파이프를 먼저 닫으면 find가 SIGPIPE(141)로 실패 — **매치가 많을수록 오탐** | maxdepth 6 + `find -print -quit` 명령 치환으로 교체 (873ed56). 교훈: pipefail 스크립트에서 `\| grep -q` 조합 금지 |
-| 2-Y | 같은 가중치·같은 held-out인데 평가 경로마다 정확도가 다름 — train.py(Keras eval) 0.72 vs evaluate.py(TFLite) 0.94 (2026-06-12 실측, 재변환·CPU 강제로도 재현) | Keras Sequential LSTM 실행 vs TFLite fused LSTM 실행의 **계통적 수치 분기**(둘 다 CPU·동일 가중치에서 22점). held-out처럼 약간 OOD 입력에서 Keras 추론이 불안정하고 TFLite fused 커널이 더 안정적인 것으로 추정 | **RPi·evaluate.py는 TFLite를 돌리므로 배포·보고 정확도 = TFLite(0.94)**. train.py "Test Accuracy"(Keras)는 production에 없는 경로라 판정 지표로 부적합 — **evaluate.py(TFLite) per-class 리포트로 판정**. 향후 train.py가 변환 후 TFLite도 평가해 manifest에 함께 기록하면 일원화 |
+| 2-Y | 같은 가중치·같은 held-out인데 평가 경로마다 정확도가 다름 — train.py(Keras eval) 0.72 vs evaluate.py(TFLite) 0.94 (2026-06-12 실측, 재변환·CPU 강제로도 재현) | Keras LSTM 실행 vs TFLite fused LSTM 실행의 **디바이스 무관 계통적 분기**. **2026-06-18 parity 실측**(동일 held-out 2,595): Keras 0.7129(**CPU=GPU 동일** → cuDNN/디바이스 커널 차이 아님) vs TFLite 0.9407, argmax 불일치 775/2595(29.9%) 중 **TFLite 정답 650·Keras 정답 59**(둘다오답 66) → 배포본 TFLite가 학습 가중치의 충실한 forward pass임이 실측 확인 | **RPi·evaluate.py는 TFLite를 돌리므로 배포·보고 정확도 = TFLite(0.94)**. train.py "Test Accuracy"(Keras)는 production에 없는 경로라 판정 지표로 부적합 — **evaluate.py(TFLite) per-class 리포트로 판정**. 향후 train.py가 변환 후 TFLite도 평가해 manifest에 함께 기록하면 일원화 |
 | 2-Z | RPi 재기동 시 `GPIO ... already in use` 경고 + **완료/페르소나 버튼 무반응**·부저 이상 (2026-06-12 데모 리허설 실측) | main.py를 tmux kill/SIGKILL로 강제 종료하면 정상 종료 경로의 `GPIO.cleanup()`이 안 돌아 핀이 점유된 채 다음 인스턴스가 뜬다. **버튼 무반응의 진짜 원인은 결선이 아님** — 2026-06-12 단독 폴링 프로브(2kHz)로 4버튼·부저 모두 하드웨어 정상 실증. 원인 = ① 완료: 침묵 트리거가 버퍼 선점 flush → `trigger_sentence()` **무음 False**(비프·LCD 피드백 없음) ② 페르소나: 실제 발화했으나(리허설 로그 실증) 피드백이 부저뿐이라 인지 불가 | **정상 종료**: GUI는 `q`, tmux는 `tmux send-keys -t <s> C-c` 후 종료(GPIO.cleanup 실행). 재기동 전 `pgrep -f "src/main[.]py"`로 **단일 인스턴스** 확인 — `pgrep -af` 패턴이 ssh 원격 명령 자신의 bash 래퍼에 매치되는 자기매치 오탐 주의(`[.]` 트릭으로 회피 불가한 경우 ps로 교차 확인). E2E 재검증 통과(페르소나 3종 발화·완료 버튼 문장 생성, 2026-06-12). 모니터링 시 `PYTHONUNBUFFERED=1` — stdout 리다이렉트는 블록버퍼라 `[Classifier]` 인식 로그가 지연된다 |
 
 ---
@@ -214,8 +214,7 @@ python convert_aihub.py --dataset /path/to/aihub/dataset --stride 10 --exact
 ```bash
 git clone https://github.com/andrew427dev/KSL-LLM-IoT.git
 cd KSL-LLM-IoT
-# PR #2 머지 전: feat/smoke-test-pipeline / 머지 후: develop
-git checkout feat/smoke-test-pipeline
+git checkout develop
 
 # uv + Python 3.11
 curl -LsSf https://astral.sh/uv/install.sh | sh
@@ -240,7 +239,7 @@ sudo apt install -y i2c-tools rpicam-apps libcap-dev libcamera-dev \
 # 저장소 가져오기 (또는 PC에서 pscp 전송)
 git clone https://github.com/andrew427dev/KSL-LLM-IoT.git ~/Desktop/KSL-LLM-IoT
 cd ~/Desktop/KSL-LLM-IoT
-git checkout feat/smoke-test-pipeline
+git checkout develop
 
 # venv
 curl -LsSf https://astral.sh/uv/install.sh | sh

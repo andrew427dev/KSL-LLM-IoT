@@ -2,7 +2,7 @@
 
 > 실시간 한국 수어(KSL) → LLM 자연어 → 음성/LCD 출력 시스템
 > 대상 사용자: 라즈베리파이 4B 위에 본 시스템을 직접 설치·운용하는 사람
-> 최종 갱신: 2026-05-14
+> 최종 갱신: 2026-06-18
 
 ---
 
@@ -64,12 +64,16 @@
 git clone https://github.com/andrew427dev/KSL-LLM-IoT.git
 cd KSL-LLM-IoT
 
-# 2) 가상환경
-python3 -m venv venv
-source venv/bin/activate
+# 2) 가상환경 (uv + Python 3.11)
+#    RPi OS Trixie 기본 Python은 3.13이며 mediapipe aarch64 휠이 없어 venv 생성이 실패한다.
+#    반드시 uv로 Python 3.11 가상환경을 만든다 (시스템 Python은 그대로 둔다).
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source ~/.bashrc
+uv venv --python 3.11
+source .venv/bin/activate
 
 # 3) 의존성 (RPi에서는 RPi 전용 파일 사용)
-pip install -r requirements-rpi.txt
+uv pip install -r requirements-rpi.txt
 
 # 4) 환경변수 파일 생성
 cp .env.example .env
@@ -87,7 +91,7 @@ nano .env       # GEMINI_API_KEY 등 채우기
 | `MODEL_PATH` | TFLite 모델 경로 | `model/ksl_model.tflite` |
 | `CONFIDENCE_THRESHOLD` | 단어 확정 임계 신뢰도 (0~1) | `0.85` |
 | `SEQUENCE_LENGTH` | 시퀀스 프레임 수 | `30` |
-| `SILENCE_TRIGGER_SEC` | 무동작 자동 문장화(초). `0` = 비활성 — 완료 버튼이 트리거 담당 | `0` |
+| `SILENCE_TRIGGER_SEC` | 무동작 자동 문장화(초). 3초 무동작 시 자동 발화(완료 버튼과 병행). `0` = 비활성(버튼 전용) | `3.0` |
 | `DUPLICATE_FILTER_SEC` | 같은 단어 재인식 차단 창(초) | `3.0` |
 | `LCD_I2C_ADDRESS` | LCD 주소 | `0x27` |
 | `BUZZER_PIN` | 부저 GPIO(BCM) | `17` |
@@ -112,7 +116,7 @@ nano .env       # GEMINI_API_KEY 등 채우기
 
 ```bash
 cd ~/KSL-LLM-IoT
-source venv/bin/activate
+source .venv/bin/activate
 python src/main.py
 ```
 
@@ -128,7 +132,7 @@ Show your sign...
 2. 등록된 30개 수어 단어 중 하나를 **약 1초간** 수행합니다.
 3. 인식 시 **부저음** + LCD에 단어와 신뢰도가 표시됩니다.
 4. 단어를 이어서 수행하면 버퍼에 누적됩니다. 같은 단어는 3초(`DUPLICATE_FILTER_SEC`) 이내 재인식이 무시된다 — 동일 단어를 연속 입력하려면 3초 이상 간격을 둔다.
-5. **완료 버튼**(GPIO5)을 누르면 Gemini가 자연어 문장을 만들어 LCD/스피커로 출력한다. "완료" 수어도 동일하게 동작한다. (무동작 자동 문장화는 기본 비활성 — `.env` `SILENCE_TRIGGER_SEC`로 복원 가능)
+5. **완료 버튼**(GPIO5)을 누르면 Gemini가 자연어 문장을 만들어 LCD/스피커로 출력한다. "완료" 수어도 동일하게 동작한다. **3초 이상 무동작 시에도 자동으로 문장이 생성된다**(기본 `SILENCE_TRIGGER_SEC=3.0`, 완료 버튼과 병행 — 버튼 전용을 원하면 `.env`에서 `0`으로 설정).
 6. **출력 분리**: 음성(TTS)은 한국어 문장, LCD·화면 표시는 영어다 — 문자형 LCD(HD44780)는 한글을 렌더링하지 못한다. 인식 단어도 LCD에는 영어 라벨(예: 배고프다→hungry)로 표시된다.
 7. **문체 버튼** 3개로 출력 문체를 즉시 전환한다 — 정중(비프 1회) / 친근(비프 2회) / 간단(비프 3회). 비프 횟수로 화면을 보지 않아도 적용 문체를 확인할 수 있다. 시작 문체는 `.env` `SENTENCE_PERSONA`. 모니터 연결(GUI) 모드에서는 `SPACE` 키 = 완료, `p` 키 = 문체 순환.
 
@@ -319,6 +323,7 @@ PuTTY → Window → Translation → "Remote character set"을 `UTF-8`로 설정
 
 | 날짜 | 내용 |
 |------|------|
+| 2026-06-18 | 무동작 자동 문장화 기본값 `SILENCE_TRIGGER_SEC=3.0`으로 변경(§2.1·§3.2) — 완료 버튼과 병행(침묵 자동 발화). 버튼 전용을 원하면 `.env`에서 `0`. RPi 설치 절차를 `uv venv --python 3.11` 기준으로 통일(§2) |
 | 2026-06-12 | 결선도 갱신(§1.1) — 카메라를 USB 웹캠 기준으로 표기, 버튼 GND를 물리 6으로 정정(실측) |
 | 2026-06-12 | 중복 인식 필터 1.5→3.0초, `.env` `DUPLICATE_FILTER_SEC`로 조정 가능(§2.1·§3.2) — 동작 유지 시 같은 단어 반복 누적 방지 |
 | 2026-06-11 | 학습 `Test Accuracy`가 held-out 시연자 기준으로 변경(§5) — 일반화 성능 지표. 구버전·단어 불일치 모델은 시작 시 `모델 shape 불일치` 오류로 즉시 종료(§6) |
