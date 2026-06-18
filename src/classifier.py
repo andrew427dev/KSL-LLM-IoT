@@ -16,11 +16,6 @@ import numpy as np
 import time
 from collections import deque
 
-try:
-    import tflite_runtime.interpreter as tflite
-except ImportError:
-    import tensorflow.lite as tflite
-
 from config.settings import (
     MODEL_PATH, CONFIDENCE_THRESHOLD, SEQUENCE_LENGTH,
     KSL_LABELS, DUPLICATE_FILTER_SEC, NO_HAND_RESET_FRAMES,
@@ -47,6 +42,12 @@ class KSLClassifier:
             self.input_details = None
             self.output_details = None
         else:
+            # tflite는 비-더미(실모델) 경로에서만 임포트한다 — 더미 모드·단위 테스트는
+            # numpy만으로 동작(모듈 임포트 시 TF/tflite 불요)해 CI 편입이 가능해진다.
+            try:
+                import tflite_runtime.interpreter as tflite
+            except ImportError:
+                import tensorflow.lite as tflite
             self.interpreter = tflite.Interpreter(model_path=MODEL_PATH)
             self.interpreter.allocate_tensors()
             self.input_details = self.interpreter.get_input_details()
