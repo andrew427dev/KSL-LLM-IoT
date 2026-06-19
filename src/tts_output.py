@@ -57,7 +57,9 @@ class TTSOutput:
 
         except Exception as e:
             print(f"[TTS] gTTS error: {e}, falling back to pyttsx3")
-            self._init_offline()
+            # 엔진은 1회만 생성 — 네트워크 단절 지속 시 매 호출 재초기화 방지
+            if not getattr(self, "_offline_engine", None):
+                self._init_offline()
             self._speak_pyttsx3(text)
 
     def _speak_pyttsx3(self, text):

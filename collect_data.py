@@ -4,7 +4,7 @@ KSL 수화 데이터 수집 스크립트.
 카메라 앞에서 각 수화 단어를 수행하면 랜드마크를 CSV로 저장합니다.
 
 Usage:
-    python collect_data.py --word 안녕 --samples 100
+    python collect_data.py --word 나 --samples 100
 """
 
 import cv2

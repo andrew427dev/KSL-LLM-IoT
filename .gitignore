@@ -17,9 +17,11 @@ docs/superpowers/
 *.pb
 *.keras
 
-# Raw data (privacy)
+# Raw data (privacy) / 대용량 변환본 (README는 추적 유지)
 data/raw/
 data/augmented/
+data/landmarks/*
+!data/landmarks/README.md
 
 # OS
 .DS_Store

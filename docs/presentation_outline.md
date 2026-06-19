@@ -123,4 +123,4 @@
 ## 발표 리허설 메모
 - 8분 = 슬라이드당 평균 ~28s. Slide 9·11·13·14에 시간 집중, 2·3·6은 빠르게.
 - "Show that your project works correctly (very important)" → Slide 14 데모가
-  사실상 채점 핵심. 데모 영상은 자막(영어) 포함 추천.
+  사실상 채점 핵심. 데모 영상은 자막(영어)을 포함한다.

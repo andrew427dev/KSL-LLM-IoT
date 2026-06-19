@@ -23,7 +23,7 @@
 ```
 
 - **인식 단위**: 30프레임(약 1초) 시퀀스 → 한 단어
-- **문장화 트리거**: **완료 버튼**(GPIO5) 또는 단어 "완료" 수행 (3초 무동작 트리거는 기본 비활성)
+- **문장화 트리거**: **완료 버튼**(GPIO5) 또는 단어 "완료" 수행, 또는 **3초 무동작**(기본 활성, `SILENCE_TRIGGER_SEC=3.0`)
 - **문체 선택**: 버튼 3개 — 정중·친근·간단 (비프 1/2/3회로 확인)
 - **신호음**: 단어가 인식될 때마다 부저 짧게 1회
 
@@ -36,7 +36,7 @@
 | 부품 | 사양 | 비고 |
 |------|------|------|
 | Raspberry Pi 4B | RAM 4GB 이상 | OS: Raspberry Pi OS (Bookworm/Trixie, 64-bit aarch64) |
-| 카메라 | Pi Camera v2 **또는** USB 웹캠 | 자동 감지(`src/main.py:CameraReader`) |
+| 카메라 | USB 웹캠 **또는** Pi Camera v1/v2 (CSI) | 자동 감지(`src/main.py:CameraReader`) |
 | I2C LCD | 20×4, 주소 `0x27` 기본 | `LCD_I2C_ADDRESS` 환경변수로 변경 가능 |
 | 부저 | Active 부저 | GPIO17(BCM) 기본 — `BUZZER_PIN` |
 | 푸시 버튼 ×4 | 모멘터리 택트 스위치 | 문장 완료 GPIO5(물리 29) / 정중 GPIO6(31) / 친근 GPIO13(33) / 간단 GPIO19(35). 각 버튼은 핀과 GND(물리 6) 사이 연결 — 내부 풀업, 외부 저항 불필요 |
@@ -60,7 +60,8 @@
 ## 2. 최초 설치 (라즈베리파이)
 
 ```bash
-# 1) 저장소 클론
+# 1) 저장소 클론 (배포 경로: ~/Desktop/KSL-LLM-IoT)
+cd ~/Desktop
 git clone https://github.com/andrew427dev/KSL-LLM-IoT.git
 cd KSL-LLM-IoT
 
@@ -115,7 +116,7 @@ nano .env       # GEMINI_API_KEY 등 채우기
 ### 3.1 시스템 시작
 
 ```bash
-cd ~/KSL-LLM-IoT
+cd ~/Desktop/KSL-LLM-IoT
 source .venv/bin/activate
 python src/main.py
 ```
@@ -314,7 +315,7 @@ PuTTY → Window → Translation → "Remote character set"을 `UTF-8`로 설정
 ## 8. 안전·주의사항
 
 - **카메라 영상은 로컬에서만 처리**됩니다. Gemini로 전송되는 것은 *인식된 단어 텍스트*뿐입니다.
-- API 키(`GEMINI_API_KEY`)는 절대 깃에 커밋하지 마세요 — `.env`는 `.gitignore` 적용 대상입니다.
+- API 키(`GEMINI_API_KEY`)는 절대 깃에 커밋하지 않습니다 — `.env`는 `.gitignore` 적용 대상입니다.
 - 부저/LCD 결선 작업 시 RPi 전원을 차단한 상태에서 진행한다.
 
 ---

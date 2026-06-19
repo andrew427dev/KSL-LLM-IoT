@@ -180,19 +180,38 @@ class _FakeInterpreter:
 
 
 def _patched_classifier(in_shape, out_shape):
-    """tflite.Interpreter와 MODEL_PATH 존재 여부를 패치한 채 생성을 시도한다."""
+    """가짜 tflite_runtime을 sys.modules에 주입한 채 생성을 시도한다.
+
+    classifier는 tflite를 __init__ 안에서 지연 import(`import tflite_runtime.
+    interpreter as tflite`)하므로 모듈 레벨에 tflite 속성이 없다. 따라서 그 지연
+    import가 집어가도록 sys.modules에 가짜 패키지를 심어, tflite_runtime 미설치
+    환경(CI/PC)에서도 shape 검증 경로를 실제로 시험한다.
+    """
+    import types
     import src.classifier as clf_mod
-    orig_interpreter = clf_mod.tflite.Interpreter
-    orig_exists = clf_mod.os.path.exists
-    clf_mod.tflite.Interpreter = (
+
+    fake_interp = types.ModuleType("tflite_runtime.interpreter")
+    fake_interp.Interpreter = (
         lambda model_path=None: _FakeInterpreter(in_shape, out_shape)
     )
+    fake_pkg = types.ModuleType("tflite_runtime")
+    fake_pkg.interpreter = fake_interp
+
+    orig_exists = clf_mod.os.path.exists
     clf_mod.os.path.exists = lambda p: True
+    saved = {k: sys.modules.get(k)
+             for k in ("tflite_runtime", "tflite_runtime.interpreter")}
+    sys.modules["tflite_runtime"] = fake_pkg
+    sys.modules["tflite_runtime.interpreter"] = fake_interp
     try:
         return clf_mod.KSLClassifier()
     finally:
-        clf_mod.tflite.Interpreter = orig_interpreter
         clf_mod.os.path.exists = orig_exists
+        for k, v in saved.items():
+            if v is None:
+                sys.modules.pop(k, None)
+            else:
+                sys.modules[k] = v
 
 
 def test_shape_mismatch_input_fails_fast():

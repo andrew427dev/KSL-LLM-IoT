@@ -66,8 +66,9 @@ class SentenceBuilder:
     def _rebuild_config(self):
         """현재 페르소나 지시문을 덧붙인 생성 config를 재구성한다.
 
-        워커 스레드는 self._gen_config 참조를 읽기만 하므로
-        참조 교체(원자적)로 동시성 문제가 없다.
+        _trigger_async가 워커 시작 시점의 self._gen_config를 스냅샷해
+        인자로 넘기므로, 생성 중에 페르소나가 바뀌어도 진행 중인 한 건은
+        시작 시점 config로 결정적으로 완료된다.
         """
         self._gen_config = types.GenerateContentConfig(
             system_instruction=(
@@ -141,14 +142,16 @@ class SentenceBuilder:
             words = self.word_buffer.copy()
             self.word_buffer.clear()
             self._inflight = True
+            # 시작 시점 config 스냅샷 — 생성 중 페르소나 변경과의 경쟁 차단
+            gen_config = None if self._offline else self._gen_config
 
         threading.Thread(
             target=self._generate_worker,
-            args=(words,),
+            args=(words, gen_config),
             daemon=True,
         ).start()
 
-    def _generate_worker(self, words):
+    def _generate_worker(self, words, gen_config):
         """워커 스레드 본체. (한국어 문장, 영어 번역) 튜플을 큐에 푸시한다.
 
         Gemini는 두 줄(한국어/영어)로 응답한다 — GEMINI_SYSTEM_PROMPT 참조.
@@ -169,7 +172,7 @@ class SentenceBuilder:
                     response = self._client.models.generate_content(
                         model=GEMINI_MODEL,
                         contents=prompt,
-                        config=self._gen_config,
+                        config=gen_config,
                     )
                     lines = [l.strip() for l in (response.text or "").splitlines()
                              if l.strip()]

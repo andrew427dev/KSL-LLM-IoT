@@ -13,7 +13,7 @@ import smbus2
 import time
 import queue
 import threading
-from config.settings import LCD_I2C_ADDRESS, LCD_NUM_COLS, LCD_NUM_ROWS
+from config.settings import LCD_I2C_ADDRESS, LCD_NUM_COLS
 
 # LCD 명령 상수
 LCD_CHR = 1  # 데이터 모드
