@@ -107,7 +107,7 @@ The word list matches AI Hub sign-language dataset headwords exactly (revised 20
 | I2C LCD | 20×4, default address `0x27` | Address override via `LCD_I2C_ADDRESS` in `.env` |
 | Active Buzzer | 3.3V or 5V active type | Pin override via `BUZZER_PIN` in `.env` |
 | Push Buttons ×4 | Momentary tactile switch | Sentence-complete + persona ×3, internal pull-up (no external resistor) |
-| Speaker | 3.5mm jack or USB audio | TTS playback |
+| Speaker | USB-audio type: USB only · Active 3.5mm type: 3.5mm (audio) + USB/external 5V (power) | TTS playback |
 | microSD | 32GB+, Class 10 | OS + dataset + model |
 | Power | 5V / 3A USB-C | Required when camera + speaker run concurrently |
 
@@ -126,7 +126,8 @@ The word list matches AI Hub sign-language dataset headwords exactly (revised 20
 | Persona: friendly | **GPIO13** (`BUTTON_PERSONA_FRIENDLY_PIN`) | Pin 33 | Button leg A (leg B → GND Pin 6) |
 | Persona: brief | **GPIO19** (`BUTTON_PERSONA_BRIEF_PIN`) | Pin 35 | Button leg A (leg B → GND Pin 6) |
 | Camera | — | USB port | USB webcam (`/dev/video0`; CSI Pi Camera also auto-detected) |
-| Audio | — | 3.5mm jack or USB | Speaker |
+| Audio (3.5mm) | — | 3.5mm jack | Active speaker audio in |
+| Audio power | — | USB port / external | Active speaker 5V power (USB-audio speaker: USB only) |
 
 Wiring diagram: [`docs/wiring_diagram.png`](docs/wiring_diagram.png) (regenerable with `python docs/generate_wiring_diagram.py`).
 
