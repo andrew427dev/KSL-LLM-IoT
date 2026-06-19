@@ -103,7 +103,7 @@ The word list matches AI Hub sign-language dataset headwords exactly (revised 20
 | Component | Spec | Notes |
 |-----------|------|-------|
 | Raspberry Pi 4B | RAM 4GB+, 64-bit Raspberry Pi OS (Bookworm or Trixie) | aarch64 |
-| Pi Camera | v1 (OV5647, fixed focus) / v2 (IMX219, fixed focus) / Module 3 (IMX708, autofocus) | CSI ribbon |
+| Camera | USB webcam (`/dev/video0`) or Pi Camera v1 (OV5647) / v2 (IMX219) / Module 3 (IMX708) via CSI | Auto-detected (`CameraReader`) |
 | I2C LCD | 20×4, default address `0x27` | Address override via `LCD_I2C_ADDRESS` in `.env` |
 | Active Buzzer | 3.3V or 5V active type | Pin override via `BUZZER_PIN` in `.env` |
 | Push Buttons ×4 | Momentary tactile switch | Sentence-complete + persona ×3, internal pull-up (no external resistor) |
@@ -211,7 +211,7 @@ uv pip install -r requirements-rpi.txt
 cp .env.example .env
 nano .env
 # Required for LLM output: GEMINI_API_KEY=<your key>
-# (Key obtainable at https://aistudio.google.com — free tier covers project usage)
+# (Key obtainable at https://aistudio.google.com — free tier available, subject to Google's quota)
 
 # B.7 Deploy the trained model
 #   Transfer model/ksl_model.tflite from PC to ~/Desktop/KSL-LLM-IoT/model/

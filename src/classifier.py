@@ -155,6 +155,13 @@ class KSLClassifier:
             sequence = np.expand_dims(seq, axis=0)  # (1, SEQUENCE_LENGTH, FEATURE_DIM)
 
             try:
+                # 각 윈도우는 독립된 30프레임 시퀀스다. fused LSTM 상태가 invoke
+                # 호출 간에 이월되면(TFLite는 자동 리셋하지 않음) 직전 단어의 잔류
+                # 상태가 현재 예측을 오염시킨다 — 평가셋 0.94 거짓 정확도의 원인이며,
+                # 서로 다른 단어를 연속 인식하는 실사용에선 정확도를 오히려 떨어뜨린다.
+                # 매 추론 전 상태를 리셋해 윈도우를 무상태로 분류한다.
+                if hasattr(self.interpreter, "reset_all_variables"):
+                    self.interpreter.reset_all_variables()
                 self.interpreter.set_tensor(self.input_details[0]['index'], sequence)
                 self.interpreter.invoke()
                 output = self.interpreter.get_tensor(self.output_details[0]['index'])[0]

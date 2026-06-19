@@ -2,7 +2,7 @@
 make_dummy_model.py
 파이프라인 smoke test용 더미 TFLite 모델 생성.
 학습 없이 정상 입출력 shape의 .tflite를 만들어 main.py 통합 동작을 검증합니다.
-가중치는 항상 KSL_LABELS[0]("안녕")을 ~100% 신뢰도로 출력하도록 조작됩니다.
+가중치는 항상 KSL_LABELS[0](첫 라벨)을 ~100% 신뢰도로 출력하도록 조작됩니다.
 
 Usage:
     python make_dummy_model.py

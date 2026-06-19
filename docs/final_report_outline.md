@@ -105,7 +105,7 @@ Hardware & Software Details / Results & Contributions / Future Work
 | 항목 | 값 |
 |---|---|
 | Pipeline validation (예시 18 classes, 3,540 samples) | TFLite accuracy 0.98 |
-| 운용 모델 (30 classes, 시연자 16명, AI Hub) | TFLite held-out accuracy **0.94** (held-out 시연자 REAL01·02, 2,595 시퀀스 — 학습 76,460) |
+| 운용 모델 (30 classes, 시연자 16명, AI Hub) | TFLite held-out accuracy **0.72** (0.7168; held-out 시연자 REAL01·02, 2,595 시퀀스 — 학습 76,460) |
 | RPi 실기 인식 (USB 웹캠, `diagnose_live`) | 27/30 단어 정상, 확신 분포 0.3~0.9 (잔존 혼동: 밥/배고프다/주다) |
 | TFLite inference latency | 0.41 ms (server CPU) / [TBD] ms (RPi) |
 | End-to-end FPS on RPi 4B | 6.4 (MediaPipe 추론 병목 — 카메라 단독 30; target ≥20 미달, 시간 리샘플링으로 정합) |
