@@ -82,6 +82,11 @@ def evaluate():
     for seq in X:
         inp = np.expand_dims(seq, axis=0).astype(np.float32)
         start = time.time()
+        # 각 시퀀스를 독립 분류 — fused LSTM 상태가 샘플 간 이월되면
+        # 라벨 정렬된 평가셋에서 같은 라벨 잔류상태가 정확도를 부풀린다
+        # (상태 누수 0.94 vs 정상 0.72). 추론 코드(classifier.py)와 동일 정책.
+        if hasattr(interpreter, "reset_all_variables"):
+            interpreter.reset_all_variables()
         interpreter.set_tensor(input_details[0]['index'], inp)
         interpreter.invoke()
         output = interpreter.get_tensor(output_details[0]['index'])[0]

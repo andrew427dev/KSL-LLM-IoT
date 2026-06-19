@@ -9,9 +9,11 @@ opencv-python>=4.8.0
 # ML (훈련)
 # TF 2.16+(Keras 3)는 LSTM의 TFLite 변환이 MLIR 오류로 실패하고,
 # TF 2.17+는 protobuf 5.x를 요구해 mediapipe(protobuf<5)와 충돌 — 2.15대 고정
+# 배포 모델(0.72 held-out)을 산출한 검증 학습 스택(GPU 서버 ksl-venv, py3.10):
+#   tensorflow 2.15.1 / keras 2.15.0 / numpy 1.26.4 / scikit-learn 1.7.2 / pandas 2.3.3
 tensorflow>=2.13.0,<2.16
 numpy>=1.24.0,<2.0
-scikit-learn>=1.3.0
+scikit-learn>=1.3.0,<1.8
 
 # Gemini API (신 SDK — google-generativeai는 EOL)
 google-genai>=0.3.0

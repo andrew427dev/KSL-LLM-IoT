@@ -86,7 +86,7 @@
 
 ## Slide 13 — Results (50s)
 - Pipeline validation: 18 classes / 3,540 samples → TFLite accuracy 0.98
-- Production model (30 classes, 16 signers): **94%** held-out accuracy
+- Production model (30 classes, 16 signers): **72%** held-out accuracy
   (TFLite, 2 signers held out), confusion matrix
 - On-device recognition: 27/30 words, confidence 0.3–0.9 (healthy spread)
 - Inference 0.41 ms (server) / [TBD] ms (RPi); model 740 KB
@@ -113,7 +113,7 @@
 - Why not ToF/depth camera? → z already correlates 0.577 with multi-view
   ground truth; features are scale-normalized so absolute depth is discarded
 - Why LSTM, not Transformer? → 196k params fits RPi latency budget;
-  accuracy already 94%; topology swap is isolated in build_model()
+  accuracy already 72%; topology swap is isolated in build_model()
 - Privacy? → video never leaves the device; only recognized word lists go to API
 - Why 30 words? → demo-scoped vocabulary; pipeline scales by re-running
   the exact-match label tooling

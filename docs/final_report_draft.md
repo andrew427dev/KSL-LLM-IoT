@@ -19,7 +19,7 @@ two-hand signing; MediaPipe extracts 3D hand landmarks; a TensorFlow-Lite LSTM c
 words; and a large language model (Gemini 2.5 Flash) composes the recognized word sequence into a
 natural Korean sentence, delivered through a speaker (TTS) and an I2C LCD. Physical buttons provide
 an accessible, latency-free control interface. On a held-out set of two unseen signers the deployed
-TFLite model reaches **0.94** word-classification accuracy; on the physical device 27 of 30 words are
+TFLite model reaches **0.72** word-classification accuracy; on the physical device 27 of 30 words are
 recognized reliably. The project's main engineering contributions are (i) an *empirically verified*
 coordinate-system alignment between a public keypoint dataset and the runtime camera, (ii) a
 single-source feature representation that structurally eliminates train/serve skew, and (iii) a
@@ -149,20 +149,25 @@ numpy-only CI that runs leakage/label-encoding regression guards.
 | Item | Value |
 |---|---|
 | Pipeline validation (example 18 classes, 3,540 samples) | TFLite accuracy 0.98 |
-| **Deployed model** (30 classes, 16 AI-Hub signers) — held-out (REAL01/02, 2,595 seq) | **TFLite accuracy 0.94** |
+| **Deployed model** (30 classes, 16 AI-Hub signers) — held-out (REAL01/02, 2,595 seq) | **TFLite accuracy 0.72** (0.7168) |
 | Physical device (USB webcam, `diagnose_live`) | 27/30 words reliable, confidence 0.3–0.9 |
 | TFLite inference latency | 0.41 ms (server CPU) / *not yet measured* (RPi) |
 | End-to-end FPS on RPi 4B | 6.4 (MediaPipe bottleneck; **target ≥20 not met** — see Future Work) |
 | Model size | 740 KB |
 | Sentence latency (Gemini) | *not yet measured* (target ≤ 4 s) |
 
-### 4.2 On the Keras-vs-TFLite gap (evaluation integrity)
-The Keras checkpoint scores 0.71 when run as a Keras model, while the **deployed TFLite** scores 0.94 on
-the *same* 2,595 held-out inputs. We measured this directly: Keras = 0.7129 on **both CPU and GPU**
-(so it is not a device/cuDNN artifact); the two models disagree on 775/2,595 (29.9%) of samples, and on
-those disagreements **TFLite is correct 650 times vs Keras 59**. The Raspberry Pi runs exactly the TFLite
-file, so we report **0.94 as the deployed model's held-out accuracy**, while disclosing that (a) it is
-measured on two held-out signers, and (b) live performance is 27/30 due to the runtime domain gap.
+### 4.2 Evaluation integrity: a corrected TFLite state-carryover artifact
+An earlier evaluation reported 0.94, while the Keras checkpoint scored 0.7129 on the *same* 2,595
+held-out inputs. We traced the gap to a bug in the evaluation harness, not the model: the TFLite
+interpreter was reused across samples and its fused `UnidirectionalSequenceLSTM` cell/hidden state
+was **not reset between `invoke()` calls**. Because the held-out set is stored in contiguous per-label
+blocks, each sample inherited residual state from a *same-label* neighbor, inflating accuracy to 0.94.
+Resetting state on every inference (`reset_all_variables()`) makes TFLite reproduce the Keras number
+**exactly (0.7168, bit-for-bit)**; shuffling the same leaked evaluation collapses it to 0.45, confirming
+the artifact. We fixed both the evaluation script (`model/evaluate.py`) and the on-device inference path
+(`src/classifier.py`) to reset state per window, and **report 0.72 (0.7168) as the deployed model's
+held-out accuracy** on two unseen signers. (The confusion matrix produced by the buggy run is invalid
+and is being regenerated with the corrected harness.)
 
 ### 4.3 Honest limitations
 Accuracy is reported on two held-out signers (wide confidence interval), recognition of `밥/배고프다/주다`
@@ -173,7 +178,7 @@ remains confusable on-device, and the FPS target is not met. These are discussed
    coordinate alignment between a public keypoint dataset and a runtime extractor.
 2. Single-source feature preprocessing that structurally prevents train/serve skew.
 3. A leakage-corrected, signer-level evaluation that documents the honest accuracy trajectory
-   (1.0000 leaked → 0.36 single-signer → 0.71/0.94 with 16 signers).
+   (1.0000 leaked → 0.36 single-signer → 0.72 with 16 signers).
 4. Accessibility-first interface: deterministic physical buttons replace recognition-latency triggers,
    with non-visual beep feedback.
 5. A fully automated cloud-train → edge-deploy pipeline.

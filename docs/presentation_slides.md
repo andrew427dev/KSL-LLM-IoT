@@ -69,14 +69,15 @@ Camera → MediaPipe (2 hands) → 131-dim feature → LSTM (TFLite) → word bu
 - Silent retrain on stale code → `chain_train.sh` fetch + reset + code-marker check
 
 ## Slide 14 — Results
-- Deployed TFLite, held-out 2 unseen signers: **0.94** accuracy
+- Deployed TFLite, held-out 2 unseen signers: **0.72** accuracy
 - On-device (USB webcam): **27/30** words reliable
 - Model 740 KB; inference 0.41 ms (server CPU); end-to-end 6.4 FPS
 
-## Slide 15 — Evaluation Integrity (Keras vs TFLite)
-- Same 2,595 inputs: Keras 0.71 (CPU=GPU) vs deployed **TFLite 0.94**
-- Disagree on 30%; on those, TFLite correct 650 vs Keras 59
-- RPi runs the TFLite → 0.94 is the faithful deployed number (reported with caveats)
+## Slide 15 — Evaluation Integrity (we found & fixed our own eval bug)
+- Earlier eval showed 0.94 vs Keras 0.71 on the same 2,595 inputs — too good to be true
+- Root cause: TFLite LSTM state **not reset between samples** + label-sorted holdout → same-label carryover
+- Fix (`reset_all_variables()` per inference): TFLite == Keras == **0.7168** (shuffle-leaked = 0.45 confirms)
+- Corrected on-device path too → **0.72 is the honest deployed number**
 
 ## Slide 16 — Limitations (Honest)
 - Held-out = 2 signers → wide confidence interval
