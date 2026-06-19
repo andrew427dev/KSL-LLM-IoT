@@ -62,7 +62,7 @@ def main():
     ax.axis('off')
     ax.set_title("KSL-LLM-IoT  Hardware Wiring Diagram\n"
                  "Raspberry Pi 4B — I2C LCD 20×4 — USB Webcam — Buzzer — "
-                 "Push Buttons ×4 — USB Speaker",
+                 "Push Buttons ×4 — Speaker (USB power + 3.5mm audio)",
                  fontsize=13, fontweight='bold', pad=14, color='#2c3e50')
 
     # ── Raspberry Pi 4B (중앙) ───────────────────────────
@@ -77,6 +77,7 @@ def main():
         ("5V  (Pin 2)",  rpi_x + 0.15, rpi_y + 2.7),
         ("GND (Pin 6)",  rpi_x + 0.15, rpi_y + 1.1),
         ("USB Port",     rpi_x + rpi_w - 1.2, rpi_y + 2.5),
+        ("3.5mm Jack",   rpi_x + rpi_w - 1.2, rpi_y + 0.35),
     ]
     for text, px, py in pins:
         ax.text(px, py, f"• {text}", fontsize=7.5, color='white', zorder=5)
@@ -98,14 +99,15 @@ def main():
               C_WIRE_GND, "GND")
 
     # ── 능동 부저 (왼쪽 하단) ───────────────────────────
-    bz_x, bz_y = 0.5, 1.8
-    draw_box(ax, bz_x, bz_y, 3.0, 1.2, "Active Buzzer\n(GPIO 17)", C_BUZZ, fontsize=10)
-    ax.text(bz_x + 0.2, bz_y + 0.6, "+  (Signal)      –  (GND)",
-            fontsize=7, color='white', zorder=5)
+    bz_x, bz_y = 0.5, 1.5
+    bz_w, bz_h = 3.0, 1.6
+    draw_box(ax, bz_x, bz_y, bz_w, bz_h, "Active Buzzer\n(GPIO 17)", C_BUZZ, fontsize=10)
+    ax.text(bz_x + bz_w / 2, bz_y + 0.28, "+ = Signal     – = GND",
+            fontsize=7, color='white', ha='center', va='center', zorder=5)
 
-    draw_wire(ax, bz_x + 3.0, bz_y + 0.9, rpi_x, rpi_y + 1.5,
+    draw_wire(ax, bz_x + bz_w, bz_y + 1.1, rpi_x, rpi_y + 1.5,
               C_WIRE_SIG, "GPIO 17")
-    draw_wire(ax, bz_x + 3.0, bz_y + 0.3, rpi_x, rpi_y + 1.1,
+    draw_wire(ax, bz_x + bz_w, bz_y + 0.4, rpi_x, rpi_y + 1.1,
               C_WIRE_GND, "GND")
 
     # ── 푸시 버튼 ×4 (하단 중앙) ─────────────────────────
@@ -118,8 +120,11 @@ def main():
              "Friendly=GPIO13(33)  Brief=GPIO19(35)",
              C_BTN, fontsize=8)
     for i, gpio_label in enumerate(["G5", "G6", "G13", "G19"]):
-        wx = btn_x + 0.7 + i * 0.95
+        wx = btn_x + 1.1 + i * 0.9
         draw_wire(ax, wx, btn_y + 1.3, wx, rpi_y, C_WIRE_SIG, gpio_label)
+    # 공통 GND — 4개 버튼의 반대쪽 다리가 모두 GND(Pin 6)로 연결되어야 동작
+    draw_wire(ax, btn_x + 0.25, btn_y + 1.3, rpi_x + 0.25, rpi_y,
+              C_WIRE_GND, "GND Pin 6")
 
     # ── USB 웹캠 (상단) ──────────────────────────────────
     cam_x, cam_y = 5.3, 7.2
@@ -127,11 +132,18 @@ def main():
     draw_wire(ax, cam_x + 1.7, cam_y, rpi_x + rpi_w / 2, rpi_y + rpi_h,
               C_WIRE_SIG, "USB")
 
-    # ── USB Speaker (오른쪽) ─────────────────────────────
-    spk_x, spk_y = 10.2, 4.5
-    draw_box(ax, spk_x, spk_y, 3.0, 1.4, "USB Speaker\n(or 3.5mm Audio)", C_SPK, fontsize=10)
-    draw_wire(ax, spk_x, spk_y + 0.7, rpi_x + rpi_w, rpi_y + 2.5,
-              C_WIRE_SIG, "USB")
+    # ── Speaker (오른쪽) — USB 5V 전원 + 3.5mm 오디오 (둘 다 필요) ──
+    spk_x, spk_y = 10.2, 4.3
+    spk_w, spk_h = 3.0, 1.6
+    draw_box(ax, spk_x, spk_y, spk_w, spk_h,
+             "Active Speaker\nUSB = 5V power\n3.5mm = audio\n(both required)",
+             C_SPK, fontsize=8.5)
+    # USB 전원선 → RPi USB 포트
+    draw_wire(ax, spk_x, spk_y + 1.1, rpi_x + rpi_w, rpi_y + 2.5,
+              C_WIRE_5V, "USB 5V")
+    # 3.5mm 오디오선 → RPi 3.5mm 잭
+    draw_wire(ax, spk_x, spk_y + 0.4, rpi_x + rpi_w, rpi_y + 0.4,
+              C_WIRE_SIG, "3.5mm audio")
 
     # ── 범례 ────────────────────────────────────────────
     legend_items = [
@@ -154,7 +166,8 @@ def main():
         ("GPIO 5/6/13/19", "Buttons: complete/persona x3"),
         ("5V  Pin 2",    "LCD VCC"),
         ("GND Pin 6",    "LCD GND / Buzzer (–) / Button legs"),
-        ("USB Port",     "Webcam / Speaker"),
+        ("USB Port",     "Webcam / Speaker 5V power"),
+        ("3.5mm Jack",   "Speaker audio"),
     ]
     for i, (pin, desc) in enumerate(rows):
         y_pos = table_y + 1.7 - i * 0.2
