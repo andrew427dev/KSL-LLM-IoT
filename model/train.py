@@ -4,26 +4,50 @@ KSL 수화 단어 분류 LSTM 모델 훈련 스크립트.
 
 Usage:
     python model/train.py
+
+레이블 인코딩 주의:
+    추론(src/classifier.py)이 `KSL_LABELS[label_idx]`로 역매핑하므로
+    학습 레이블 인덱스는 반드시 KSL_LABELS의 원본 순서를 따라야 한다.
+    sklearn LabelEncoder는 유니코드 정렬을 수행해 인덱스가 어긋난다 — 사용 금지.
 """
 
+import json
 import numpy as np
 import os
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+import pandas as pd
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
-from sklearn.preprocessing import LabelEncoder
-from config.settings import KSL_LABELS, SEQUENCE_LENGTH, INPUT_SHAPE
+from config.settings import KSL_LABELS, SEQUENCE_LENGTH, FEATURE_DIM, INPUT_SHAPE
+from model.data_split import split_holdout
+
+RANDOM_SEED = 42
+
+# evaluate.py가 동일한 held-out 집합으로 평가하기 위한 분할 기록
+HOLDOUT_MANIFEST = "model/holdout.json"
+
+# KSL_LABELS 원본 순서 기반 인코딩 — classifier.py의 KSL_LABELS[label_idx]와 일치
+LABEL_TO_IDX = {label: i for i, label in enumerate(KSL_LABELS)}
+
+
+def encode_labels(y_raw):
+    """라벨 문자열 목록 → KSL_LABELS 원본 순서 기준 정수 인덱스."""
+    return np.array([LABEL_TO_IDX[label] for label in y_raw], dtype=np.int32)
 
 
 def load_dataset(landmarks_dir="data/landmarks", augmented_dir="data/augmented"):
     """
     data/landmarks/ (원본) + data/augmented/ (증강) 에서 CSV를 로드합니다.
     augmented_dir 가 없거나 비어 있으면 원본만 사용합니다.
-    각 CSV: 30행(프레임) × 63열(랜드마크)
+    각 CSV: SEQUENCE_LENGTH행 × FEATURE_DIM열 (src/feature_format.py 레이아웃)
+
+    Returns:
+        (X, y, files) — files는 각 샘플의 CSV 경로.
+        held-out 시연자 분리(model/data_split.py)가 파일명에서 그룹을 파싱한다.
     """
-    X, y = [], []
+    X, y, files = [], [], []
 
     dirs_to_load = [landmarks_dir]
     if augmented_dir and os.path.exists(augmented_dir):
@@ -40,10 +64,12 @@ def load_dataset(landmarks_dir="data/landmarks", augmented_dir="data/augmented")
                     continue
                 path = os.path.join(label_dir, fname)
                 try:
-                    seq = np.loadtxt(path, delimiter=",")
-                    if seq.shape == (SEQUENCE_LENGTH, 63):
+                    # pandas C 파서 — np.loadtxt 대비 대용량 로딩 수 배 빠름
+                    seq = pd.read_csv(path, header=None, dtype=np.float32).values
+                    if seq.shape == (SEQUENCE_LENGTH, FEATURE_DIM):
                         X.append(seq)
                         y.append(label)
+                        files.append(path)
                 except Exception as e:
                     print(f"[Train] Skip {fname}: {e}")
 
@@ -52,13 +78,18 @@ def load_dataset(landmarks_dir="data/landmarks", augmented_dir="data/augmented")
         if not os.path.exists(os.path.join(landmarks_dir, label)):
             print(f"[Train] Warning: No data found for '{label}'")
 
-    return np.array(X, dtype=np.float32), np.array(y)
+    return np.array(X, dtype=np.float32), np.array(y), files
 
 
-def build_model(num_classes):
-    """LSTM 분류기 모델 구조."""
+def build_model(num_classes, batch_size=None):
+    """LSTM 분류기 모델 구조.
+
+    batch_size: 학습 시 None(dynamic). TFLite 변환 시 1로 고정 —
+    dynamic batch에서는 LSTM 내부 TensorListReserve의 element_shape가
+    static이 아니어서 변환이 실패한다 (TF 2.15 확인).
+    """
     model = tf.keras.Sequential([
-        tf.keras.layers.Input(shape=INPUT_SHAPE),
+        tf.keras.layers.Input(shape=INPUT_SHAPE, batch_size=batch_size),
         tf.keras.layers.LSTM(128, return_sequences=True),
         tf.keras.layers.Dropout(0.3),
         tf.keras.layers.LSTM(64, return_sequences=False),
@@ -69,9 +100,42 @@ def build_model(num_classes):
     return model
 
 
+def convert_and_verify_tflite(model, output_path="model/ksl_model.tflite"):
+    """Keras 모델 → TFLite 변환 후, 로드·shape 검증을 통과해야 저장한다.
+
+    변환은 batch=1 고정 복제 모델로 수행한다 (build_model docstring 참조).
+    런타임(src/classifier.py)도 (1, SEQUENCE_LENGTH, FEATURE_DIM) 단건 추론이라
+    배치 고정에 따른 기능 손실은 없다.
+    """
+    fixed = build_model(len(KSL_LABELS), batch_size=1)
+    fixed.set_weights(model.get_weights())
+
+    converter = tf.lite.TFLiteConverter.from_keras_model(fixed)
+    # float16 양자화는 적용하지 않는다 — TF 2.15에서 LSTM + float16 조합의
+    # 변환 패스가 메모리 폭주로 OOM kill됨 (24GB 컨테이너에서 실측).
+    # 본 모델은 float32로도 ~740KB라 양자화 이득이 없다.
+    tflite_model = converter.convert()
+
+    # 저장 전 검증: 인터프리터 로드 + 입출력 shape 일치
+    interpreter = tf.lite.Interpreter(model_content=tflite_model)
+    interpreter.allocate_tensors()
+    in_shape = tuple(interpreter.get_input_details()[0]["shape"])
+    out_shape = tuple(interpreter.get_output_details()[0]["shape"])
+    expected_in = (1, SEQUENCE_LENGTH, FEATURE_DIM)
+    expected_out = (1, len(KSL_LABELS))
+    assert in_shape == expected_in, f"TFLite input {in_shape} != {expected_in}"
+    assert out_shape == expected_out, f"TFLite output {out_shape} != {expected_out}"
+
+    with open(output_path, "wb") as f:
+        f.write(tflite_model)
+    print(f"[Train] TFLite verified ({in_shape} -> {out_shape}). Saved: {output_path}")
+
+
 def train():
+    tf.keras.utils.set_random_seed(RANDOM_SEED)
+
     print("[Train] Loading dataset...")
-    X, y_raw = load_dataset()
+    X, y_raw, files = load_dataset()
 
     if len(X) == 0:
         print("[Train] No data found. Please collect data first.")
@@ -79,25 +143,52 @@ def train():
 
     print(f"[Train] Loaded {len(X)} samples across {len(set(y_raw))} classes.")
 
-    # 레이블 인코딩
-    le = LabelEncoder()
-    le.fit(KSL_LABELS)
-    y = le.transform(y_raw)
-    y_cat = tf.keras.utils.to_categorical(y, num_classes=len(KSL_LABELS))
+    y = encode_labels(y_raw)
 
-    # Train / Val / Test split
-    X_train, X_test, y_train, y_test = train_test_split(
-        X, y_cat, test_size=0.15, random_state=42, stratify=y
-    )
+    # Test = held-out 시연자 원본 (시연자의 어떤 변형도 train에 비노출 —
+    # 슬라이딩 윈도우·증강 누출 차단). Test Accuracy가 곧 일반화 지표가 된다.
+    train_mask, test_mask, holdout_groups = split_holdout(files, seed=RANDOM_SEED)
+    if train_mask is None:
+        print("[Train] Warning: REAL 시연자 그룹 부족 — 샘플 단위 랜덤 분할 폴백. "
+              "윈도우·증강 누출로 Test Accuracy가 부풀려진다 (판정 지표 사용 금지).")
+        X_train, X_test, y_train, y_test = train_test_split(
+            X, y, test_size=0.15, random_state=RANDOM_SEED, stratify=y
+        )
+        test_files = []
+    else:
+        X_train, y_train = X[train_mask], y[train_mask]
+        X_test, y_test = X[test_mask], y[test_mask]
+        test_files = [f for f, m in zip(files, test_mask) if m]
+        n_dropped = len(X) - len(X_train) - len(X_test)
+        print(f"[Train] Held-out 시연자: {holdout_groups} — "
+              f"train {len(X_train)} / test {len(X_test)} "
+              f"(held-out 증강본 {n_dropped}개 제외)")
+
     X_train, X_val, y_train, y_val = train_test_split(
-        X_train, y_train, test_size=0.15 / 0.85, random_state=42
+        X_train, y_train, test_size=0.15,
+        random_state=RANDOM_SEED, stratify=y_train
     )
+
+    # one-hot — label smoothing을 위해 categorical 사용
+    y_train_cat = tf.keras.utils.to_categorical(y_train, len(KSL_LABELS))
+    y_val_cat = tf.keras.utils.to_categorical(y_val, len(KSL_LABELS))
+    y_test_cat = tf.keras.utils.to_categorical(y_test, len(KSL_LABELS))
+
+    # 클래스 불균형 보정 — AI Hub 단어별 시연자 수 차이 대비
+    counts = np.bincount(y_train, minlength=len(KSL_LABELS)).astype(np.float64)
+    present = counts > 0
+    class_weight = {
+        i: (counts[present].mean() / counts[i]) if counts[i] > 0 else 0.0
+        for i in range(len(KSL_LABELS))
+    }
 
     # 모델 빌드
     model = build_model(len(KSL_LABELS))
     model.compile(
         optimizer=tf.keras.optimizers.Adam(learning_rate=0.001),
-        loss='categorical_crossentropy',
+        # label smoothing — 좁은 시연자 분포에 대한 병적 과신(모든 예측 ~1.00,
+        # RPi 실기 진단으로 확인)을 완화해 CONFIDENCE_THRESHOLD가 의미를 갖게 한다
+        loss=tf.keras.losses.CategoricalCrossentropy(label_smoothing=0.1),
         metrics=['accuracy']
     )
     model.summary()
@@ -114,28 +205,37 @@ def train():
     # 훈련
     print("[Train] Training started...")
     history = model.fit(
-        X_train, y_train,
-        validation_data=(X_val, y_val),
+        X_train, y_train_cat,
+        validation_data=(X_val, y_val_cat),
         epochs=200,
         batch_size=32,
+        class_weight=class_weight,
         callbacks=callbacks
     )
 
     # 평가
-    test_loss, test_acc = model.evaluate(X_test, y_test)
+    test_loss, test_acc = model.evaluate(X_test, y_test_cat)
     print(f"\n[Train] Test Accuracy: {test_acc:.4f}")
+    if holdout_groups:
+        print(f"[Train] (held-out 시연자 {holdout_groups} 원본 기준 — 일반화 지표)")
+        with open(HOLDOUT_MANIFEST, "w", encoding="utf-8") as f:
+            json.dump({
+                "holdout_groups": holdout_groups,
+                "test_files": test_files,
+                "test_accuracy": float(test_acc),
+                "n_train": int(len(X_train)),
+                "n_val": int(len(X_val)),
+                "n_test": int(len(X_test)),
+            }, f, ensure_ascii=False, indent=2)
+        print(f"[Train] Held-out manifest 저장: {HOLDOUT_MANIFEST}")
+    elif os.path.exists(HOLDOUT_MANIFEST):
+        # 랜덤 분할 폴백 — 이전 실행의 manifest가 남으면 evaluate가
+        # 현재 모델과 무관한 집합을 평가하므로 제거한다
+        os.remove(HOLDOUT_MANIFEST)
 
-    # TFLite 변환
+    # TFLite 변환 + 검증
     print("[Train] Converting to TFLite...")
-    converter = tf.lite.TFLiteConverter.from_keras_model(model)
-    converter.optimizations = [tf.lite.Optimize.DEFAULT]
-    converter.target_spec.supported_types = [tf.float16]  # Float16 양자화
-    tflite_model = converter.convert()
-
-    with open("model/ksl_model.tflite", "wb") as f:
-        f.write(tflite_model)
-
-    print("[Train] Done. Saved: model/ksl_model.tflite")
+    convert_and_verify_tflite(model)
     return history
 
 

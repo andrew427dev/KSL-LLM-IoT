@@ -1,0 +1,54 @@
+name: CI
+
+# 경량 정적 검증. mediapipe/tensorflow/tflite-runtime은 설치하지 않는다
+# (각각 100MB+ 휠 다운로드 + RPi 3B의 wheel 부재 가능성 등 무거움).
+# 대신 numpy + python-dotenv 만 설치해 다음을 검증:
+#   - 모든 .py가 syntax error 없이 컴파일되는가
+#   - INPUT_SHAPE / NUM_HANDS 등 설정 상수 일관성
+#   - augment.flip_horizontal의 거울 효과 수치 회귀
+#   - hand_tracker.py 소스에 핵심 분기(score 임계값·라벨 충돌 처리 등) 존재
+#   - 단일 손 차원(63) 하드코딩 잔재 부재
+on:
+  pull_request:
+    branches: [develop, main]
+  push:
+    branches: [develop, main]
+
+jobs:
+  static-checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install minimal deps
+        run: pip install numpy python-dotenv
+
+      - name: Syntax check (compileall)
+        run: |
+          python -m compileall -q \
+            config src model tests tools \
+            collect_data.py make_dummy_model.py convert_aihub.py
+
+      - name: Smoke test (settings + augment + source markers)
+        run: python tests/test_smoke.py
+
+      - name: Augment test (131-dim flip/noise/time_warp)
+        run: python tests/test_augment_two_hands.py
+
+      - name: Button input test (fake GPIO — RPi 불필요)
+        run: python tests/test_button_input.py
+
+      - name: Leakage / encoding guards (numpy-only — 데이터 누출·라벨 회귀 차단)
+        run: |
+          python tests/test_data_split.py
+          python tests/test_label_encoding.py
+          python tests/test_settings_override.py
+          python tests/test_source_naming.py
+          python tests/test_server_download.py
