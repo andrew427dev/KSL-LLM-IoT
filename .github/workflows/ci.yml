@@ -44,3 +44,11 @@ jobs:
 
       - name: Button input test (fake GPIO — RPi 불필요)
         run: python tests/test_button_input.py
+
+      - name: Leakage / encoding guards (numpy-only — 데이터 누출·라벨 회귀 차단)
+        run: |
+          python tests/test_data_split.py
+          python tests/test_label_encoding.py
+          python tests/test_settings_override.py
+          python tests/test_source_naming.py
+          python tests/test_server_download.py

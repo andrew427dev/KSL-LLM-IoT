@@ -4,14 +4,14 @@
 
 ```
 main    — 안정 버전 (발표/제출용)
-dev     — 통합 개발 브랜치
-feature/<기능명>  — 기능 단위 개발 (dev에서 분기, dev로 머지)
+develop — 통합 개발 브랜치
+feature/<기능명>  — 기능 단위 개발 (develop에서 분기, develop로 머지)
 fix/<버그명>      — 버그 수정
 ```
 
 **작업 흐름:**
 ```
-feature/xxx → PR → dev → (통합 테스트 통과) → PR → main
+feature/xxx → PR → develop → (통합 테스트 통과) → PR → main
 ```
 
 ## 커밋 메시지 컨벤션

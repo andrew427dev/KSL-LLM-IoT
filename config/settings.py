@@ -119,10 +119,10 @@ if _labels_override:
     KSL_LABELS = [w.strip() for w in _labels_override.split(",") if w.strip()]
 
 TRIGGER_WORD = "완료"
-# 무동작 자동 문장화(초). 0 이하 = 비활성. 기본 비활성 — 인식율 의존
-# 레이턴시 오차가 커서 물리 버튼(BUTTON_COMPLETE_PIN)으로 대체 (2026-06-10).
-# 복원하려면 .env에 SILENCE_TRIGGER_SEC=3.0
-SILENCE_TRIGGER_SEC = float(os.getenv("SILENCE_TRIGGER_SEC", 0.0))
+# 무동작 자동 문장화(초). 0 이하 = 비활성.
+# 침묵 자동 발화를 물리 완료 버튼과 병행하면 단어 누적이 빨라 체감이 낫다는
+# 시운전 결과로 기본 3.0초 채택 (2026-06-12). 버튼 전용을 원하면 .env에서 0으로 둔다.
+SILENCE_TRIGGER_SEC = float(os.getenv("SILENCE_TRIGGER_SEC", 3.0))
 # 같은 단어 재인식 차단 창(초). 동작을 유지하면 버퍼 리필(~1.5초)마다
 # 같은 단어가 다시 통과하므로, 침묵 트리거(3.0)와 정렬해 한 동작당 한 단어로 제한.
 DUPLICATE_FILTER_SEC = float(os.getenv("DUPLICATE_FILTER_SEC", 3.0))

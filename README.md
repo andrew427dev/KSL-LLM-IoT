@@ -92,7 +92,7 @@ KSL-LLM-IoT/
 | Daily Nouns | 밥, 병원, 의사, 엄마, 가족, 친구, 얼마 |
 | System | **완료** (transmit trigger sign) |
 
-The word list matches AI Hub sign-language dataset headwords exactly (revised 2026-06-10; see `convert_aihub.py --exact`). Sentence generation is triggered by the **physical complete button** (GPIO5) or the `완료` sign. Silence-based auto-trigger is disabled by default (`SILENCE_TRIGGER_SEC=0`).
+The word list matches AI Hub sign-language dataset headwords exactly (revised 2026-06-10; see `convert_aihub.py --exact`). Sentence generation is triggered by the **physical complete button** (GPIO5), the `완료` sign, or **3 seconds of inactivity** (`SILENCE_TRIGGER_SEC=3.0`, runs alongside the button; set to `0` for button-only).
 
 ---
 
@@ -276,6 +276,8 @@ This matrix allows incremental bring-up: hardware → camera → classifier → 
 | LLM response latency | ≤ 2 sec |
 | End-to-end pipeline delay | ≤ 4 sec |
 
+> **Actual (RPi 4B, develop):** on-device inference is ~6.4 FPS — MediaPipe hand detection is the bottleneck, mitigated by 1-second time-resampling so the recognition window matches the 30 FPS training distribution (see HANDOFF §1.4). The ≥20 FPS target is **not met** and is addressed in Future Work. Recognition accuracy and end-to-end latency are reported in the final report.
+
 ---
 
 ## 📖 Documentation
@@ -306,7 +308,7 @@ This matrix allows incremental bring-up: hardware → camera → classifier → 
 | 4 | [AIRC-KETI/GKSL-dataset](https://github.com/AIRC-KETI/GKSL-dataset) | Gloss 레벨 KSL | (확인 필요) | LICENSE.md 별도 |
 | 5 | [KETI 응급 KSL (arXiv:1811.11436)](https://arxiv.org/abs/1811.11436) | 14,672 영상 / 419 단어 + 105 문장 | RGB + OpenPose | 비공개 가능성, 논문 contact 필요 |
 
-> 본 프로젝트의 30단어 인식 모델은 1차로 `collect_data.py`를 통한 **자체 수집** 데이터를 사용한다. 위 외부 데이터셋은 라벨 매핑·키포인트 정의(MediaPipe 21점 vs OpenPose/137점) 일치 여부를 검토한 뒤 보조 학습 데이터로 사용 여부를 결정한다.
+> 본 프로젝트의 30단어 인식 모델은 **AI Hub 수어 영상 데이터셋의 3D 키포인트**(시연자 16명)를 `convert_aihub.py --exact`로 프로젝트 131차원 포맷으로 변환해 학습한다. 좌표계 정렬(축 부호·등방 보정)은 `tools/verify_aihub_alignment.py`로 동일 영상의 MP4와 키포인트를 프레임 단위로 비교해 실측 검증했다. `collect_data.py`를 통한 **자체 수집**은 데모 화자 도메인 보강용으로 혼합 학습한다(future work). 위 표의 외부 데이터셋은 라벨 매핑·키포인트 정의(MediaPipe 21점 vs OpenPose/137점) 검토용 참고 목록이다.
 
 ---
 

@@ -9,7 +9,8 @@ opencv-python>=4.8.0
 
 # ML (추론 전용 — tensorflow 대신 경량 런타임)
 tflite-runtime>=2.13.0
-numpy>=1.24.0
+# numpy 2.x는 mediapipe<0.10.30·tflite-runtime(1.x ABI 빌드 휠)와 ABI 충돌 — 상한 고정
+numpy>=1.24.0,<2.0
 
 # Gemini API (신 SDK — google-generativeai는 EOL)
 google-genai>=0.3.0
