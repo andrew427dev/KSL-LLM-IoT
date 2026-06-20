@@ -31,7 +31,7 @@
 - Visual: Fig.1 (보고서와 공용)
 
 ## Slide 5 — Hardware (40s)
-- Raspberry Pi 4B, Pi Camera v1, I2C LCD 20×4, buzzer, speaker
+- Raspberry Pi 4B, Pi Camera v1, I2C LCD 20×4, buzzer, status LED, speaker
 - **4 push buttons** (sentence-complete + 3 persona) — internal pull-up,
   button-to-GND wiring, no external resistors
 - Visual: wiring_diagram.png + 실물 사진
@@ -39,7 +39,7 @@
 ## Slide 6 — Why Buttons? Accessibility by Design (30s)
 - Recognition-latency triggers (silence timer) = unpredictable errors
 - Physical buttons: deterministic, tactile, usable without watching the screen
-- Beep feedback 1/2/3 = which persona is active (non-visual confirmation)
+- Buzzer + synchronized LED blink 1/2/3 = which persona is active (LED = visual cue for deaf/HoH); complete = long beep+LED, repeat-last-sentence on second press
 
 ## Slide 7 — Feature Engineering: 131-dim Two-Hand Input (40s)
 - [LEFT 63 | RIGHT 63 | wrist-to-wrist 3 | presence 2]
@@ -101,7 +101,7 @@
 ## Slide 15 — Contributions (30s)
 1. Empirical dataset↔runtime alignment methodology (reusable tool)
 2. Train/serve consistency by single-source preprocessing
-3. Accessibility-first interface (buttons + auditory feedback)
+3. Accessibility-first interface (buttons + auditory buzzer + synchronized visual LED for deaf/HoH)
 4. Fully automated cloud-train → edge-deploy workflow
 
 ## Slide 16 — Future Work (20s)
