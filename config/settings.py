@@ -139,6 +139,9 @@ LCD_NUM_ROWS = int(os.getenv("LCD_NUM_ROWS", 4))
 
 # ── Hardware: GPIO ──────────────────────────────────────
 BUZZER_PIN = int(os.getenv("BUZZER_PIN", 17))
+# 부저와 1:1 동기 점멸하는 시각 피드백 LED (BCM). 농인 사용자를 위한 시각 신호 —
+# 부저가 울릴 때 켜지고, 꺼질 때 함께 꺼진다. 물리핀 GPIO22=15 (LED + 저항 → GND).
+LED_PIN = int(os.getenv("LED_PIN", 22))
 
 # 물리 버튼 (BCM). 내부 풀업 — 버튼은 해당 핀과 GND 사이에 연결, 눌림=LOW.
 # 물리핀: GPIO5=29, GPIO6=31, GPIO13=33, GPIO19=35 (GND: 30, 34 인접).

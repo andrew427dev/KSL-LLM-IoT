@@ -27,18 +27,22 @@ from src.tts_output import TTSOutput
 from src.lcd_display import LCDDisplay
 from src.button_input import EVENT_COMPLETE
 from config.settings import (
-    CAMERA_INDEX, CAMERA_WIDTH, CAMERA_HEIGHT, CAMERA_FPS, BUZZER_PIN,
-    SENTENCE_PERSONAS, KSL_LABELS_EN,
+    CAMERA_INDEX, CAMERA_WIDTH, CAMERA_HEIGHT, CAMERA_FPS, BUZZER_PIN, LED_PIN,
+    SENTENCE_PERSONAS, KSL_LABELS_EN, TRIGGER_WORD,
 )
 
 # 페르소나별 비프 횟수 — 정중 1회, 친근 2회, 간단 3회 (선언 순서).
 # 화면을 보지 않아도 어떤 문체가 적용됐는지 소리로 구분한다.
 _PERSONA_BEEPS = {name: i + 1 for i, name in enumerate(SENTENCE_PERSONAS)}
 
+# 마지막으로 출력한 문장 (한국어, 영어) — 완료 버튼 재누름 시 재생용.
+_last_sentence = None
+
 try:
     import RPi.GPIO as GPIO
     GPIO.setmode(GPIO.BCM)
     GPIO.setup(BUZZER_PIN, GPIO.OUT)
+    GPIO.setup(LED_PIN, GPIO.OUT)  # 부저 동기 시각 피드백 LED
     GPIO_AVAILABLE = True
 except ImportError:
     GPIO_AVAILABLE = False
@@ -189,39 +193,50 @@ class CameraReader:
             self._picam.stop()
 
 
-def beep(times=1):
-    """신호음 (비동기). 메인 인식 루프를 블록하지 않는다.
+def beep(times=1, long=False):
+    """신호음 + LED 동기 점멸 (비동기). 메인 인식 루프를 블록하지 않는다.
 
     times: 펄스 횟수 — 페르소나 버튼 피드백(정중1/친근2/간단3)처럼
     화면을 보지 않아도 어떤 입력이 적용됐는지 구분하게 한다.
+    long: True면 길게 1회 울린다 — 문장 완료/재생 신호를 단어 인식음과
+    청각·시각 모두에서 구분한다.
+    LED(LED_PIN)는 부저와 1:1로 켜지고 꺼져, 농인 사용자를 위한 시각 피드백을 준다.
     """
     if not GPIO_AVAILABLE:
         return
-    threading.Thread(target=_beep_pulse, args=(times,), daemon=True).start()
+    dur = 0.6 if long else 0.05
+    threading.Thread(target=_beep_pulse, args=(times, dur), daemon=True).start()
 
 
-def _beep_pulse(times=1):
+def _beep_pulse(times=1, dur=0.05):
     for i in range(times):
         if i:
             time.sleep(0.1)
         try:
             GPIO.output(BUZZER_PIN, True)
-            time.sleep(0.05)
+            GPIO.output(LED_PIN, True)   # 부저와 동기 — 시각 피드백
+            time.sleep(dur)
             GPIO.output(BUZZER_PIN, False)
+            GPIO.output(LED_PIN, False)
         except RuntimeError:
             # 종료 시 GPIO.cleanup() 이후 데몬 스레드가 늦게 도는 경우 — 조용히 중단.
             return
 
 
-def _handle_control_event(event, builder, lcd):
+def _handle_control_event(event, builder, lcd, tts):
     """물리 버튼·GUI 키 공통 제어 이벤트 처리.
 
-    event: EVENT_COMPLETE(문장 완료) 또는 페르소나 이름("정중"/"친근"/"간단").
+    event: EVENT_COMPLETE(문장 완료/재생) 또는 페르소나 이름("정중"/"친근"/"간단").
+    완료: 버퍼에 단어가 있으면 새 문장 생성, 비어 있으면 마지막 문장을 재생한다
+    (완료 버튼 재누름 = 다시 듣기). 둘 다 길게 1회 비프 + LED로 신호한다.
     """
     if event == EVENT_COMPLETE:
         if builder.trigger_sentence():
-            beep(1)
+            beep(long=True)
             lcd.write_line(3, "Generating...")
+        elif _last_sentence is not None:
+            beep(long=True)
+            _output_sentence(_last_sentence, tts, lcd)  # 마지막 문장 재생
         return
     if builder.set_persona(event):
         beep(_PERSONA_BEEPS.get(event, 1))
@@ -288,7 +303,8 @@ def main():
             if result:
                 word, confidence = result
                 print(f"[Classifier] {word} ({confidence:.1%})")
-                beep()
+                # 완료 수어는 문장 트리거 — 길게 1회로 단어 인식음과 구분.
+                beep(long=True) if word == TRIGGER_WORD else beep()
                 # LCD는 한글 렌더링 불가 — 영어 라벨로 표시
                 lcd.show_recognition(KSL_LABELS_EN.get(word, "?"), confidence)
 
@@ -299,7 +315,7 @@ def main():
             if buttons:
                 event = buttons.poll()
                 if event:
-                    _handle_control_event(event, builder, lcd)
+                    _handle_control_event(event, builder, lcd, tts)
 
             # 4a. 침묵 트리거 확인 (기본 비활성 — SILENCE_TRIGGER_SEC 참조)
             builder.check_silence_trigger()
@@ -325,12 +341,12 @@ def main():
                     break
                 elif key == ord(' '):
                     # SPACE = 문장 완료 (물리 완료 버튼과 동일 경로)
-                    _handle_control_event(EVENT_COMPLETE, builder, lcd)
+                    _handle_control_event(EVENT_COMPLETE, builder, lcd, tts)
                 elif key == ord('p'):
                     # 문장 페르소나 순환 (정중 → 친근 → 간단 → ...)
                     names = list(SENTENCE_PERSONAS)
                     nxt = names[(names.index(builder.persona) + 1) % len(names)]
-                    _handle_control_event(nxt, builder, lcd)
+                    _handle_control_event(nxt, builder, lcd, tts)
 
     except KeyboardInterrupt:
         print("\n[Main] Interrupted by user.")
@@ -349,7 +365,12 @@ def main():
 
 
 def _output_sentence(sentence, tts, lcd):
-    """(한국어, 영어) 문장 출력 — 음성은 한국어, LCD는 영어(한글 렌더링 불가)."""
+    """(한국어, 영어) 문장 출력 — 음성은 한국어, LCD는 영어(한글 렌더링 불가).
+
+    마지막 문장을 보관해 완료 버튼 재누름(버퍼 빈 상태) 시 재생할 수 있게 한다.
+    """
+    global _last_sentence
+    _last_sentence = sentence
     korean, english = sentence
     print(f"\n[Sentence] {korean}  /  {english}\n")
     lcd.show_sentence(english)

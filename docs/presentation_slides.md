@@ -23,7 +23,7 @@ Camera → MediaPipe (2 hands) → 131-dim feature → LSTM (TFLite) → word bu
 - Presentation: LCD + TTS
 - Application: sentence buffer + LLM controller (persona)
 - AI/ML: MediaPipe → LSTM (TFLite)
-- Hardware: RPi 4B, camera, GPIO buttons, buzzer
+- Hardware: RPi 4B, camera, GPIO buttons, buzzer, status LED
 
 ## Slide 5 — Two-Hand 131-Dim Feature
 - KSL is two-handed → single-hand (63-d) loses meaning
@@ -54,9 +54,10 @@ Camera → MediaPipe (2 hands) → 131-dim feature → LSTM (TFLite) → word bu
 - Async worker (camera never blocks); offline fallback = word concatenation
 
 ## Slide 11 — Hardware & Accessibility
-- USB webcam, I2C LCD 20×4, active buzzer, 4 push buttons (complete + 3 personas)
+- USB webcam, I2C LCD 20×4, active buzzer, **status LED (GPIO22)**, 4 push buttons (complete + 3 personas)
 - Internal pull-ups to GND (no external resistors)
-- **Beep 1/2/3 times** = non-visual persona confirmation for deaf/HoH users
+- **Buzzer + LED blink in sync (1/2/3×)** = persona confirmation — the LED gives deaf/HoH users the cue **visually**
+- Sentence complete = single **long** beep+LED (vs short per-word); complete button again = replay last sentence
 
 ## Slide 12 — Software Stack
 - CV: MediaPipe Hands (<0.10.30), OpenCV

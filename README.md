@@ -106,6 +106,7 @@ The word list matches AI Hub sign-language dataset headwords exactly (revised 20
 | Camera | USB webcam (`/dev/video0`) or Pi Camera v1 (OV5647) / v2 (IMX219) / Module 3 (IMX708) via CSI | Auto-detected (`CameraReader`) |
 | I2C LCD | 20×4, default address `0x27` | Address override via `LCD_I2C_ADDRESS` in `.env` |
 | Active Buzzer | 3.3V or 5V active type | Pin override via `BUZZER_PIN` in `.env` |
+| Status LED | Any LED + series resistor (220–330 Ω) | Mirrors the buzzer (visual feedback for deaf users); `LED_PIN` in `.env` |
 | Push Buttons ×4 | Momentary tactile switch | Sentence-complete + persona ×3, internal pull-up (no external resistor) |
 | Speaker | USB-audio type: USB only · Active 3.5mm type: 3.5mm (audio) + USB/external 5V (power) | TTS playback |
 | microSD | 32GB+, Class 10 | OS + dataset + model |
@@ -121,6 +122,8 @@ The word list matches AI Hub sign-language dataset headwords exactly (revised 20
 | SCL | GPIO3 | Pin 5 | I2C LCD SCL |
 | Buzzer signal | **GPIO17** (default `BUZZER_PIN`) | Pin 11 | Active buzzer + |
 | Buzzer GND | — | Pin 9 | Active buzzer − |
+| LED signal | **GPIO22** (default `LED_PIN`) | Pin 15 | LED anode (+) via 220–330 Ω resistor |
+| LED GND | — | Pin 6 | LED cathode (−) |
 | Complete button | **GPIO5** (`BUTTON_COMPLETE_PIN`) | Pin 29 | Button leg A (leg B → GND Pin 6) |
 | Persona: polite | **GPIO6** (`BUTTON_PERSONA_POLITE_PIN`) | Pin 31 | Button leg A (leg B → GND Pin 6) |
 | Persona: friendly | **GPIO13** (`BUTTON_PERSONA_FRIENDLY_PIN`) | Pin 33 | Button leg A (leg B → GND Pin 6) |

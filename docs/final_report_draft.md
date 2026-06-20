@@ -40,12 +40,12 @@ a cloud LLM only for the final sentence-generation step. The pipeline is:
 > Camera → MediaPipe (2 hands) → 131-dim feature → LSTM (TFLite) → word buffer →
 > [complete button | `완료` sign | 3 s silence] → Gemini 2.5 Flash → TTS (Korean) + LCD (English).
 
-**IoT characteristics.** Sensors/actuators (camera, GPIO buttons, buzzer) → on-device inference →
+**IoT characteristics.** Sensors/actuators (camera, GPIO buttons, buzzer, status LED) → on-device inference →
 outputs (LCD, speaker); plus a cloud-train → edge-deploy lifecycle.
 
 **Differentiators.** (1) Natural LLM sentences rather than a word list; (2) user-selectable sentence
-*persona* (polite/friendly/brief); (3) accessibility-first control (physical buttons + non-visual
-beep feedback) for users who are deaf/hard-of-hearing; (4) a *measured* train/serve coordinate
+*persona* (polite/friendly/brief); (3) accessibility-first control (physical buttons + synchronized
+buzzer/LED feedback — the LED gives visual confirmation for deaf/hard-of-hearing users); (4) a *measured* train/serve coordinate
 alignment between the AI-Hub dataset and the runtime camera.
 
 ---
@@ -110,11 +110,15 @@ async worker so the camera loop never blocks, and falls back to a plain word con
 | USB webcam (`/dev/video0`, used in the demo) — Pi Camera v1/CSI also supported | USB / CSI | — |
 | I2C LCD 20×4 (0x27) | I2C | GPIO2/3 |
 | Active buzzer | GPIO out | GPIO17 |
+| Status LED (mirrors buzzer, via resistor) | GPIO out | GPIO22 |
 | Push buttons ×4 (complete + persona×3) | GPIO in (internal pull-up) | GPIO5/6/13/19 ↔ GND |
 | Speaker | 3.5 mm / USB (separate power) | — |
 
 Buttons use internal pull-ups switching to GND (~66 µA, no external resistor). The buzzer beeps
-1/2/3 times to confirm the selected persona without looking at a screen (accessibility).
+1/2/3 times to confirm the selected persona, and a status LED (GPIO22) blinks in sync with every
+beep so deaf/HoH users receive the same cue visually. Sentence completion is signalled by a single
+*long* beep+LED (distinct from the short per-word cue); pressing the complete button again with an
+empty buffer replays the last sentence (TTS + LCD).
 
 ### 3.2 Software stack
 
@@ -179,8 +183,9 @@ remains confusable on-device, and the FPS target is not met. These are discussed
 2. Single-source feature preprocessing that structurally prevents train/serve skew.
 3. A leakage-corrected, signer-level evaluation that documents the honest accuracy trajectory
    (1.0000 leaked → 0.36 single-signer → 0.72 with 16 signers).
-4. Accessibility-first interface: deterministic physical buttons replace recognition-latency triggers,
-   with non-visual beep feedback.
+4. Accessibility-first interface: deterministic physical buttons replace recognition-latency triggers;
+   feedback is both audible (buzzer) and visual (a buzzer-synchronized LED) for deaf/HoH users, with a
+   distinct long cue for sentence completion and a replay-last-sentence action.
 5. A fully automated cloud-train → edge-deploy pipeline.
 
 ---

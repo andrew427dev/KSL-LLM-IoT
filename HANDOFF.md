@@ -50,7 +50,7 @@ GPU 학습 서버 (`ssh -p 30007 root@cscloud.gpu3.hufs.ac.kr`, RTX 4000 Ada 20G
 RPi 실기 통합 (2026-06-10/11, USB 웹캠 + 운용 모델):
 
 - [x] SSH 직접 운용: `ssh rpi` (~/.ssh/config, IP는 DHCP — ARP에서 MAC `d8-3a-dd` 검색으로 재발견)
-- [x] USB 웹캠(OpenCV 백엔드, 카메라 단독 30FPS) / USB 전원 스피커(3.5mm) / LCD / 부저 / **물리 버튼 4개 결선·동작**
+- [x] USB 웹캠(OpenCV 백엔드, 카메라 단독 30FPS) / USB 전원 스피커(3.5mm) / LCD / 부저 / **상태 LED(GPIO22, 부저 동기)** / **물리 버튼 4개 결선·동작**
 - [x] 운용 모델(30클래스) 실기 가동 — 종단 경로 실증: 카메라→인식→Gemini(실호출)→TTS(한국어)+LCD(영어)
 - [x] 출력 이중화: 음성=한국어, LCD·GUI=영어 (LCD 한글 미지원)
 - [x] tmux 세션 운용 (`tmux new -d -s ksl ...` — nohup은 와이파이 끊김에 취약)
@@ -61,7 +61,7 @@ RPi 실기 통합 (2026-06-10/11, USB 웹캠 + 운용 모델):
 
 - [x] KSL_LABELS 30단어 확정 (2026-06-10) — AI Hub 표제어 기준 재구성, `config/settings.py` 반영 (§1.5 WORD 목록)
 - [x] AI Hub 데이터셋: **16명(REAL01~16) 재다운로드 완료** (2026-06-12, 수정판 fail-fast 스크립트). 시연자 분포 직접 검수(2-W) 통과 — 각 225 dir=3,600, 30/30 단어 매칭, 잔재 0. chain_train.sh 재학습 완주
-- [x] 하드웨어 결선 전부 완료 (LCD/부저/스피커/버튼 4개/USB 웹캠)
+- [x] 하드웨어 결선 전부 완료 (LCD/부저/상태 LED/스피커/버튼 4개/USB 웹캠)
 - [x] Gemini API 키 등록 (RPi .env) — 실호출 검증
 - [x] **실기 인식률 확보** — 16명 재학습 모델 RPi 실기 **27/30 단어 정상·확신 0.3~0.9 건강(1.00 과신 병리 해소)**. 잔존 혼동 밥/배고프다/주다는 G7 스파이크로 위치 부재(G7) 아닌 런타임 손모양 갭으로 판명 → 데모 시나리오 회피 결정(§1.6 G7 검증). future work: 본인 데이터 수집 혼합(§4.2, collect_data 시간 리샘플 수정 선행 — 미착수)
 - [x] PR #9 → develop 머지 (2026-06-11). main 릴리스는 제출 직전 수행
@@ -415,6 +415,7 @@ tmux new -d -s ksl "cd ~/Desktop/KSL-LLM-IoT && DISPLAY=:0 KSL_HEADLESS=0 .venv/
 
 | 날짜 | 작성자 | 내용 |
 |------|--------|------|
+| 2026-06-21 | 이성준 + Claude (Opus 4.8) | **상태 LED(GPIO22, `LED_PIN`) 추가** — 부저와 1:1 동기 점멸(`_beep_pulse`), 농인용 시각 피드백. **문장 완료/재생 = 부저+LED 길게 1회**(단어 인식음 짧게와 구분, 완료 버튼·완료 수어 양 경로). **완료 버튼 재누름(버퍼 빈 상태) = 마지막 문장 재생**(`_output_sentence`가 `_last_sentence` 보관). 배선도·README·USER_MANUAL·.env.example·보고서/발표 전 문서 정합. RPi 실기 검증 통과(LED 동기·완료 길게·재생). 데모 견고화: `CONFIDENCE_THRESHOLD=0.90`(held-out 정밀도~0.90)·Gemini 프롬프트 노이즈 내성. CROWD(FS) 데이터 30단어 미포함 확인(데이터 확대 경로 막힘), B/C 튜닝 천장 확인(BiLSTM +0.2%p 노이즈) |
 | 2026-06-19 | 이성준 + Claude (Opus 4.8) | **정확도 0.94 정정 → 0.72(0.7168)** (C-1 규명). 0.94는 평가 시 TFLite fused LSTM 상태 미리셋 + 라벨정렬 holdout의 같은-라벨 상태누수 산물(셔플 0.45, 리셋 시 Keras와 비트일치 0.7168). 함정 2-Y 결론 폐기·정정. **`model/evaluate.py`·`src/classifier.py`에 추론별 `reset_all_variables()` 추가**(on-device 연속 인식 오염 차단 — 데모 정확도 직결). 보고서·발표·개발과정 문서 수치 일괄 0.72로 정정. confusion_matrix.png 재생성 대기. 신규 RPi 셋업·전체 HW 검증·배선도 보정·코드/문서 정리(M-2 테스트·M-3 persona race·.gitignore landmarks 등) 병행 |
 | 2026-06-12 | 배진규 + Claude (Fable 5) | **버튼 무반응 근본 원인 해소** — 2kHz 단독 프로브로 결선·부저 결백 실증, 원인=침묵 트리거 버퍼 선점(완료 무음 False)+부저 단독 피드백(2-Z 갱신). E2E 재검증 통과. **중복 인식 필터 1.5→3.0초·`.env` 오버라이드화**(444b5d7 — "help help help" 해소, TDD·매뉴얼 동기). `SILENCE_TRIGGER_SEC=3.0` 유지 결정. **배선도 갱신**(USB 웹캠·버튼 GND 물리6, README·매뉴얼 동기). 보고서·PPT 아웃라인 [TBD] 수치 반영(0.94·27/30·6.4FPS) |
 | 2026-06-12 | 배진규 + Claude (Opus 4.8) | **16명 재학습 완주·RPi 배포** — held-out **TFLite 0.94**(배포본)/Keras 0.72. 데이터: 3,600 keypoint dir(16명×225)→21,710 시퀀스→증강 65,130, held-out=REAL01·02 통째분리(train 76,460/test 2,595). 함정 **2-Y**(Keras LSTM vs TFLite fused LSTM held-out 22점 계통차 — RPi·evaluate.py는 TFLite라 **배포정확도=0.94**, 판정·보고는 TFLite 사용) 추가. RPi 실기: **27/30 정상·확신 0.3~0.9 건강(1.00 병리 해소)**, 밥/배고프다/주다 혼동(배고프다→돕다 0.92), det 57~74%·6.4FPS. **G7 스파이크**: AI Hub서 손-앵커 위치가 3단어 분리 못 함(밥만 부분) → G7 보류, 주범=런타임 손모양(G2/G3/G4). 결정: **데모 시나리오로 회피**, 본인데이터 보강(§4.2) future work |
