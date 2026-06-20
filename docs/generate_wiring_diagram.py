@@ -23,6 +23,7 @@ C_BUZZ   = "#27ae60"   # 부저 — 초록
 C_CAM    = "#8e44ad"   # 카메라 — 보라
 C_SPK    = "#e67e22"   # 스피커 — 주황
 C_BTN    = "#16a085"   # 푸시 버튼 — 청록
+C_LED    = "#f1c40f"   # 상태 LED — 노랑
 C_WIRE_5V  = "#e74c3c" # 5V 선
 C_WIRE_GND = "#2c3e50" # GND 선
 C_WIRE_SIG = "#f39c12" # 신호 선
@@ -62,7 +63,7 @@ def main():
     ax.axis('off')
     ax.set_title("KSL-LLM-IoT  Hardware Wiring Diagram\n"
                  "Raspberry Pi 4B — I2C LCD 20×4 — USB Webcam — Buzzer — "
-                 "Push Buttons ×4 — Speaker (USB power + 3.5mm audio)",
+                 "Push Buttons ×4 — Status LED — Speaker (USB power + 3.5mm audio)",
                  fontsize=13, fontweight='bold', pad=14, color='#2c3e50')
 
     # ── Raspberry Pi 4B (중앙) ───────────────────────────
@@ -74,6 +75,7 @@ def main():
         ("GPIO 2 (SDA)", rpi_x + 0.15, rpi_y + 2.3),
         ("GPIO 3 (SCL)", rpi_x + 0.15, rpi_y + 1.9),
         ("GPIO 17",      rpi_x + 0.15, rpi_y + 1.5),
+        ("GPIO 22",      rpi_x + 0.15, rpi_y + 0.7),
         ("5V  (Pin 2)",  rpi_x + 0.15, rpi_y + 2.7),
         ("GND (Pin 6)",  rpi_x + 0.15, rpi_y + 1.1),
         ("USB Port",     rpi_x + rpi_w - 1.2, rpi_y + 2.5),
@@ -108,6 +110,17 @@ def main():
     draw_wire(ax, bz_x + bz_w, bz_y + 1.1, rpi_x, rpi_y + 1.5,
               C_WIRE_SIG, "GPIO 17")
     draw_wire(ax, bz_x + bz_w, bz_y + 0.4, rpi_x, rpi_y + 1.1,
+              C_WIRE_GND, "GND")
+
+    # ── 상태 LED (버저 동기, 시각 피드백 — 농인 접근성) ─────
+    led_x, led_y = 0.5, 3.35
+    led_w, led_h = 3.0, 0.85
+    draw_box(ax, led_x, led_y, led_w, led_h, "Status LED (GPIO 22)\nmirrors buzzer",
+             C_LED, fontsize=8.5, text_color="#2c3e50")
+    # 신호: LED anode(+) → GPIO22 (직렬 저항 220~330Ω 권장), cathode(−) → GND
+    draw_wire(ax, led_x + led_w, led_y + 0.55, rpi_x, rpi_y + 0.7,
+              C_WIRE_SIG, "GPIO 22")
+    draw_wire(ax, led_x + led_w, led_y + 0.2, rpi_x, rpi_y + 1.1,
               C_WIRE_GND, "GND")
 
     # ── 푸시 버튼 ×4 (하단 중앙) ─────────────────────────
@@ -163,9 +176,10 @@ def main():
         ("GPIO 2 (SDA)", "I2C LCD — Data"),
         ("GPIO 3 (SCL)", "I2C LCD — Clock"),
         ("GPIO 17",      "Buzzer (+)"),
+        ("GPIO 22",      "Status LED (+, via resistor)"),
         ("GPIO 5/6/13/19", "Buttons: complete/persona x3"),
         ("5V  Pin 2",    "LCD VCC"),
-        ("GND Pin 6",    "LCD GND / Buzzer (–) / Button legs"),
+        ("GND Pin 6",    "LCD/Buzzer/LED (–) / Button legs"),
         ("USB Port",     "Webcam / Speaker 5V power"),
         ("3.5mm Jack",   "Speaker audio"),
     ]
