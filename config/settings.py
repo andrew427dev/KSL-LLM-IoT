@@ -37,7 +37,7 @@ GEMINI_SYSTEM_PROMPT = """
 # GUI 모드에서는 'p' 키로 실행 중 순환 변경.
 SENTENCE_PERSONAS = {
     "정중": "- 문체: 격식 있는 존댓말(-습니다체)로 정중하게 표현한다.",
-    "친근": "- 문체: 부드러운 해요체로 친근하고 따뜻하게 표현한다.",
+    "친근": "- 문체: 반말체로 친한 친구에게 말하듯 편하고 다정하게 표현한다. 존댓말(-습니다/-요)을 쓰지 말 것 (예: '고마워', '밥 먹었어?', '친구야 보고 싶었어').",
 }
 SENTENCE_PERSONA = os.getenv("SENTENCE_PERSONA", "정중")
 if SENTENCE_PERSONA not in SENTENCE_PERSONAS:

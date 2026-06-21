@@ -288,8 +288,9 @@ def _handle_control_event(event, builder, lcd, tts):
         if removed:
             beep(3)  # 초기화: 짧게 3회 (단어1·완료길게·페르소나1/2와 구분)
             print(f"[Main] Undo: removed '{removed}'")
-            lcd.write_line(3, f"Undo -{KSL_LABELS_EN.get(removed, '?')}")
-        return
+            # 지운 단어가 LCD에 남지 않도록 버퍼 미리보기 즉시 갱신(빈 버퍼면 비움)
+            lcd.show_buffer(builder.get_buffer_preview(english=True))
+        return False
     if builder.set_persona(event):
         beep(_PERSONA_BEEPS.get(event, 1))
         lcd.show_persona(_PERSONA_EN.get(event, event))  # LCD 상단에 현재 문체 표시

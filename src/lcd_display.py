@@ -129,13 +129,11 @@ class LCDDisplay:
         for char in text:
             self._write_byte(ord(char), LCD_CHR)
 
-    def _line0(self, state):
-        """상단 줄: 좌측 상태 태그 + 우측 현재 페르소나(예: 'Generated   [Polite]')."""
-        self._last_state = state
-        tag = f"[{self._persona_label}]" if self._persona_label else ""
-        left = state[:max(0, LCD_NUM_COLS - len(tag))]
-        pad = max(0, LCD_NUM_COLS - len(left) - len(tag))
-        return left + (" " * pad) + tag
+    def _line0(self, state=None):
+        """상단 줄 = 현재 페르소나만 표시(상태 문구 생략 — 글자 잘림 방지)."""
+        if self._persona_label:
+            return f"Style: {self._persona_label}"
+        return "KSL-LLM-IoT"
 
     def _show_recognition_sync(self, word, confidence):
         self._marquee = None  # 인식 표시 중에는 스크롤 중지
