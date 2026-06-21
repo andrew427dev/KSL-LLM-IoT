@@ -99,27 +99,28 @@ def main():
     draw_wire(ax, lcd_x + 3.0, lcd_y + 0.5, rpi_x, rpi_y + 1.1,
               C_WIRE_GND, "GND")
 
-    # ── 능동 부저 (왼쪽 하단) ───────────────────────────
-    bz_x, bz_y = 0.5, 1.5
-    bz_w, bz_h = 3.0, 1.6
+    # ── 능동 부저 (왼쪽, LCD 아래) — LED와 위치 교환해 배선 교차 제거 ──
+    # 부저 핀(GPIO17·GND6)이 LED 핀(GPIO22·GND25)보다 위에 있어, 부저를
+    # 위쪽에 두면 두 컴포넌트의 배선이 핀 순서와 정렬돼 교차하지 않는다.
+    # LCD·Buzzer·LED를 균등 간격(상하 0.25)으로 정렬, 부저는 LED와 동일 크기.
+    bz_x, bz_y = 0.5, 3.3
+    bz_w, bz_h = 3.0, 0.95
     draw_box(ax, bz_x, bz_y, bz_w, bz_h, "Active Buzzer", C_BUZZ, fontsize=10)
-    ax.text(bz_x + bz_w / 2, bz_y + 0.28, "+ = Signal     – = GND",
-            fontsize=7, color='white', ha='center', va='center', zorder=5)
 
-    draw_wire(ax, bz_x + bz_w, bz_y + 1.1, rpi_x, rpi_y + 1.5,
+    draw_wire(ax, bz_x + bz_w, bz_y + 0.65, rpi_x, rpi_y + 1.5,
               C_WIRE_SIG, "GPIO 17")
-    draw_wire(ax, bz_x + bz_w, bz_y + 0.4, rpi_x, rpi_y + 1.1,
+    draw_wire(ax, bz_x + bz_w, bz_y + 0.3, rpi_x, rpi_y + 1.1,
               C_WIRE_GND, "GND")
 
-    # ── 상태 LED (버저 동기, 시각 피드백 — 농인 접근성) ─────
-    led_x, led_y = 0.5, 3.35
-    led_w, led_h = 3.0, 0.85
+    # ── 상태 LED (왼쪽, 부저 아래) — 부저와 동일 크기로 정렬 (시각 피드백, 농인 접근성) ─────
+    led_x, led_y = 0.5, 2.1
+    led_w, led_h = 3.0, 0.95
     draw_box(ax, led_x, led_y, led_w, led_h, "Status LED",
              C_LED, fontsize=8.5, text_color="#2c3e50")
-    # 신호: LED anode(+) → GPIO22 (직렬 저항 220~330Ω 권장), cathode(−) → GND
-    draw_wire(ax, led_x + led_w, led_y + 0.55, rpi_x, rpi_y + 0.7,
+    # 신호: LED anode(+) → GPIO22 (직렬 저항 220~330Ω 권장), cathode(−) → GND Pin25
+    draw_wire(ax, led_x + led_w, led_y + 0.65, rpi_x, rpi_y + 0.7,
               C_WIRE_SIG, "GPIO 22")
-    draw_wire(ax, led_x + led_w, led_y + 0.2, rpi_x, rpi_y + 0.35,
+    draw_wire(ax, led_x + led_w, led_y + 0.3, rpi_x, rpi_y + 0.35,
               C_WIRE_GND, "GND Pin 25")
 
     # ── 푸시 버튼 ×4 (하단 중앙) ─────────────────────────
