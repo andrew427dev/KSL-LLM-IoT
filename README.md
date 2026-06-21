@@ -121,7 +121,7 @@ The word list matches AI Hub sign-language dataset headwords exactly (revised 20
 | SDA | GPIO2 | Pin 3 | I2C LCD SDA |
 | SCL | GPIO3 | Pin 5 | I2C LCD SCL |
 | Buzzer signal | **GPIO17** (default `BUZZER_PIN`) | Pin 11 | Active buzzer + |
-| Buzzer GND | — | Pin 9 | Active buzzer − |
+| Buzzer GND | — | Pin 6 | Active buzzer − (shared GND) |
 | LED signal | **GPIO22** (default `LED_PIN`) | Pin 15 | LED anode (+) via 220–330 Ω resistor |
 | LED GND | — | Pin 25 | LED cathode (−) — GND below SPI0 SCLK (Pin 23) |
 | Complete button | **GPIO5** (`BUTTON_COMPLETE_PIN`) | Pin 29 | Button leg A (leg B → GND Pin 6) |
