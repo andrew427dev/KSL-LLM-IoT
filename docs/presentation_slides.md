@@ -16,7 +16,7 @@ IoT Systems, Spring 2026 · Lee Sungjoon (202102467), Bae Jingyu (202001647)
 
 ## Slide 3 — Concept (One-Line Pipeline)
 Camera → MediaPipe (2 hands) → 131-dim feature → LSTM (TFLite) → word buffer
-→ [button | `완료` sign | 3 s silence] → Gemini 2.5 Flash → TTS (Korean) + LCD (English)
+→ [complete button | `완료` sign] → Gemini 2.5 Flash → TTS (Korean) + LCD (English)
 - Perception is **local** (privacy, latency); only sentence generation calls the cloud
 
 ## Slide 4 — System Architecture
@@ -50,14 +50,16 @@ Camera → MediaPipe (2 hands) → 131-dim feature → LSTM (TFLite) → word bu
 - Only unseen-signer accuracy is used for judgment
 
 ## Slide 10 — LLM Sentence Generation + Persona
-- Word buffer → Gemini 2.5 Flash, persona system prompt (polite/friendly/brief)
+- Word buffer → Gemini 2.5 Flash, persona system prompt (polite / friendly = casual)
+- One call generates **both** personas and caches them — persona switch / re-press = 0 extra calls
 - Async worker (camera never blocks); offline fallback = word concatenation
 
 ## Slide 11 — Hardware & Accessibility
-- USB webcam, I2C LCD 20×4, active buzzer, **status LED (GPIO22)**, 4 push buttons (complete + 3 personas)
+- USB webcam, I2C LCD 20×4, active buzzer, **status LED (GPIO22)**, 4 push buttons (complete + undo + 2 personas)
 - Internal pull-ups to GND (no external resistors)
-- **Buzzer + LED blink in sync (1/2/3×)** = persona confirmation — the LED gives deaf/HoH users the cue **visually**
-- Sentence complete = single **long** beep+LED (vs short per-word); complete button again = replay last sentence
+- **Buzzer + LED blink in sync (1/2×)** = persona confirmation — the LED gives deaf/HoH users the cue **visually**
+- Sentence complete = single **long** beep+LED (vs short per-word); persona switch / re-press = replay cached sentence
+- Undo button: remove last word (while entering) or re-generate the sentence (after output)
 
 ## Slide 12 — Software Stack
 - CV: MediaPipe Hands (<0.10.30), OpenCV

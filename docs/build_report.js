@@ -64,18 +64,18 @@ children.push(new Paragraph({ children: [new PageBreak()] }));
 
 // ---- Abstract ----
 children.push(H1("Abstract"));
-children.push(P("KSL-LLM-IoT is a real-time Korean Sign Language (KSL) translator that runs on a Raspberry Pi 4B edge device. A camera captures two-hand signing; MediaPipe extracts 3D hand landmarks; a TensorFlow-Lite LSTM classifies 30 KSL words; and a large language model (Gemini 2.5 Flash) composes the recognized word sequence into a natural Korean sentence, delivered through a speaker (TTS) and an I2C LCD. Physical buttons provide an accessible, latency-free control interface. On a held-out set of two unseen signers the deployed TFLite model reaches 0.94 word-classification accuracy; on the physical device 27 of 30 words are recognized reliably. The main engineering contributions are (i) an empirically verified coordinate-system alignment between a public keypoint dataset and the runtime camera, (ii) a single-source feature representation that structurally eliminates train/serve skew, and (iii) a leakage-corrected, signer-level evaluation protocol."));
+children.push(P("KSL-LLM-IoT is a real-time Korean Sign Language (KSL) translator that runs on a Raspberry Pi 4B edge device. A camera captures two-hand signing; MediaPipe extracts 3D hand landmarks; a TensorFlow-Lite LSTM classifies 30 KSL words; and a large language model (Gemini 2.5 Flash) composes the recognized word sequence into a natural Korean sentence, delivered through a speaker (TTS) and an I2C LCD. Physical buttons provide an accessible, latency-free control interface. On a held-out set of two unseen signers the deployed TFLite model reaches 0.72 word-classification accuracy; on the physical device 27 of 30 words are recognized reliably. The main engineering contributions are (i) an empirically verified coordinate-system alignment between a public keypoint dataset and the runtime camera, (ii) a single-source feature representation that structurally eliminates train/serve skew, and (iii) a leakage-corrected, signer-level evaluation protocol."));
 
 // ---- 1 Project Idea ----
 children.push(H1("1. Project Idea"));
 children.push(runs([new TextRun({ text: "Problem. ", bold: true }), new TextRun("Roughly 400,000 deaf people in Korea use KSL as their primary language, yet very few hearing people understand it, creating a daily communication barrier that today depends on scarce human interpreters. Most prior KSL work stops at word-level classification; an end-to-end pipeline that produces natural sentences and speech on an edge device is rare.")]));
 children.push(runs([new TextRun({ text: "Concept. ", bold: true }), new TextRun("A low-cost Raspberry Pi performs all perception locally (privacy, low latency) and calls a cloud LLM only for the final sentence-generation step:")]));
-children.push(P("Camera → MediaPipe (2 hands) → 131-dim feature → LSTM (TFLite) → word buffer → [complete button | 완료 sign | 3 s silence] → Gemini 2.5 Flash → TTS (Korean) + LCD (English).", { run: { italics: true } }));
-children.push(runs([new TextRun({ text: "IoT characteristics. ", bold: true }), new TextRun("Sensors/actuators (camera, GPIO buttons, buzzer) → on-device inference → outputs (LCD, speaker); plus a cloud-train → edge-deploy lifecycle.")]));
+children.push(P("Camera → MediaPipe (2 hands) → 131-dim feature → LSTM (TFLite) → word buffer → [complete button | 완료 sign] → Gemini 2.5 Flash → TTS (Korean) + LCD (English).", { run: { italics: true } }));
+children.push(runs([new TextRun({ text: "IoT characteristics. ", bold: true }), new TextRun("Sensors/actuators (camera, GPIO buttons, buzzer, status LED) → on-device inference → outputs (LCD, speaker); plus a cloud-train → edge-deploy lifecycle.")]));
 children.push(P("Differentiators:", { run: { bold: true } }));
 children.push(bullet("Natural LLM sentences rather than a word list."));
-children.push(bullet("User-selectable sentence persona (polite / friendly / brief)."));
-children.push(bullet("Accessibility-first control: physical buttons + non-visual beep feedback for deaf / hard-of-hearing users."));
+children.push(bullet("User-selectable sentence persona (polite / friendly)."));
+children.push(bullet("Accessibility-first control: physical buttons + synchronized buzzer/LED feedback — the LED gives visual confirmation for deaf / hard-of-hearing users."));
 children.push(bullet("A measured train/serve coordinate alignment between the AI-Hub dataset and the runtime camera."));
 
 // ---- 2 System Design ----
@@ -107,10 +107,11 @@ children.push(tbl([5000, 2360, 2000], [
   ["USB webcam (/dev/video0, demo) — Pi Camera v1/CSI also supported", "USB / CSI", "—"],
   ["I2C LCD 20×4 (0x27)", "I2C", "GPIO2/3"],
   ["Active buzzer", "GPIO out", "GPIO17"],
-  ["Push buttons ×4 (complete + persona×3)", "GPIO in (pull-up)", "GPIO5/6/13/19 ↔ GND"],
+  ["Status LED (mirrors buzzer, via resistor)", "GPIO out", "GPIO22"],
+  ["Push buttons ×4 (complete + undo + persona×2)", "GPIO in (pull-up)", "GPIO5/6/13/19 ↔ GND"],
   ["Speaker", "3.5mm / USB", "separate power"],
 ]));
-children.push(P("Buttons use internal pull-ups switching to GND (~66 µA, no external resistor). The buzzer beeps 1/2/3 times to confirm the selected persona without looking at a screen.", { spacing: { before: 120, after: 120 } }));
+children.push(P("Buttons use internal pull-ups switching to GND (~66 µA, no external resistor): complete (GPIO5), undo (GPIO6), and two persona buttons (polite GPIO13, friendly GPIO19). The buzzer beeps 1/2 times to confirm the selected persona, and a status LED (GPIO22) blinks in sync with every beep so deaf/HoH users receive the same cue visually. Sentence completion is signalled by a single long beep+LED (distinct from the short per-word cue). The undo button is context-sensitive: while words are being entered it removes the last buffered word (short triple beep); after a sentence is produced it re-generates only the current persona's sentence (long beep) to recover from a wrong reading. Because one completion call generates both personas at once and caches them, switching persona or re-pressing complete replays the cached sentence with zero extra API calls.", { spacing: { before: 120, after: 120 } }));
 children.push(H2("3.2 Software Stack"));
 children.push(tbl([2400, 4000, 2960], [
   ["Layer", "Technology", "Notes"],
@@ -131,22 +132,22 @@ children.push(H2("4.1 Quantitative Results"));
 children.push(tbl([6360, 3000], [
   ["Item", "Value"],
   ["Pipeline validation (example 18 classes, 3,540 samples)", "TFLite accuracy 0.98"],
-  ["Deployed model (30 classes, 16 signers) — held-out (2 unseen signers, 2,595 seq)", "TFLite accuracy 0.94"],
-  ["Physical device (USB webcam, diagnose_live)", "27/30 words reliable"],
+  ["Deployed model (30 classes, 16 signers) — held-out (2 unseen signers, 2,595 seq)", "TFLite accuracy 0.72 (0.7168)"],
+  ["Physical device (USB webcam, diagnose_live)", "27/30 words reliable, confidence 0.3–0.9"],
   ["TFLite inference latency", "0.41 ms (server CPU) / not yet measured (RPi)"],
   ["End-to-end FPS on RPi 4B", "6.4 — target ≥20 not met (Future Work)"],
   ["Model size", "740 KB"],
   ["Sentence latency (Gemini)", "not yet measured (target ≤ 4 s)"],
 ]));
-children.push(H2("4.2 On the Keras-vs-TFLite Gap (Evaluation Integrity)"));
-children.push(P("The Keras checkpoint scores 0.71 when run as a Keras model, while the deployed TFLite scores 0.94 on the same 2,595 held-out inputs. We measured this directly: Keras = 0.7129 on both CPU and GPU (so it is not a device/cuDNN artifact); the two models disagree on 775/2,595 (29.9%) of samples, and on those disagreements TFLite is correct 650 times vs Keras 59. The Raspberry Pi runs exactly the TFLite file, so we report 0.94 as the deployed model's held-out accuracy, while disclosing that (a) it is measured on two held-out signers, and (b) live performance is 27/30 due to the runtime domain gap."));
+children.push(H2("4.2 Evaluation Integrity: a Corrected TFLite State-Carryover Artifact"));
+children.push(P("An earlier evaluation reported 0.94, while the Keras checkpoint scored 0.7129 on the same 2,595 held-out inputs. We traced the gap to a bug in the evaluation harness, not the model: the TFLite interpreter was reused across samples and its fused UnidirectionalSequenceLSTM cell/hidden state was not reset between invoke() calls. Because the held-out set is stored in contiguous per-label blocks, each sample inherited residual state from a same-label neighbor, inflating accuracy to 0.94. Resetting state on every inference (reset_all_variables()) makes TFLite reproduce the Keras number exactly (0.7168, bit-for-bit); shuffling the same leaked evaluation collapses it to 0.45, confirming the artifact. We fixed both the evaluation script (model/evaluate.py) and the on-device inference path (src/classifier.py) to reset state per window, and report 0.72 (0.7168) as the deployed model's held-out accuracy on two unseen signers. (The confusion matrix produced by the buggy run is invalid and is being regenerated with the corrected harness.)"));
 children.push(H2("4.3 Honest Limitations"));
 children.push(P("Accuracy is reported on two held-out signers (wide confidence interval); recognition of 밥/배고프다/주다 remains confusable on-device; and the FPS target is not met. These are discussed rather than hidden."));
 children.push(H2("4.4 Contributions"));
 children.push(num("A reusable methodology and tool (verify_aihub_alignment.py) for empirically verifying coordinate alignment between a public keypoint dataset and a runtime extractor."));
 children.push(num("Single-source feature preprocessing that structurally prevents train/serve skew."));
-children.push(num("A leakage-corrected, signer-level evaluation that documents the honest accuracy trajectory (1.0000 leaked → 0.36 single-signer → 0.71/0.94 with 16 signers)."));
-children.push(num("Accessibility-first interface: deterministic physical buttons with non-visual beep feedback."));
+children.push(num("A leakage-corrected, signer-level evaluation that documents the honest accuracy trajectory (1.0000 leaked → 0.36 single-signer → 0.72 with 16 signers)."));
+children.push(num("Accessibility-first interface: deterministic physical buttons replace recognition-latency triggers; feedback is both audible (buzzer) and visual (a buzzer-synchronized LED) for deaf/HoH users, with a distinct long cue for sentence completion and a replay-last-sentence action."));
 children.push(num("A fully automated cloud-train → edge-deploy pipeline."));
 
 // ---- 5 Future Work ----
@@ -191,6 +192,6 @@ const doc = new Document({
 });
 
 Packer.toBuffer(doc).then((buf) => {
-  fs.writeFileSync("/tmp/ksl-review/docs/KSL-LLM-IoT_Report.docx", buf);
-  console.log("WROTE /tmp/ksl-review/docs/KSL-LLM-IoT_Report.docx", buf.length, "bytes");
+  fs.writeFileSync("/Users/leesung-joon/Desktop/KSL-LLM-IoT/docs/KSL-LLM-IoT_Report.docx", buf);
+  console.log("WROTE /Users/leesung-joon/Desktop/KSL-LLM-IoT/docs/KSL-LLM-IoT_Report.docx", buf.length, "bytes");
 });

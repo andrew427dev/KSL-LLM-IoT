@@ -34,6 +34,15 @@ class LCDDisplay:
             print(f"[LCD] Init failed (running without LCD): {e}")
             self.available = False
 
+        # 상단 줄(line 0) 상태 — 좌측 상태 태그 + 우측 현재 페르소나 표시용
+        self._persona_label = ""
+        self._last_state = "KSL"
+
+        # 전광판(marquee) 스크롤 — 긴 문장을 한 줄에서 좌로 흘려 전체를 읽게 한다.
+        # {text, pos, line} 또는 None. 워커 스레드에서만 접근.
+        self._marquee = None
+        self._tick = 0.4  # 스크롤 간격(초) — 큐가 비었을 때 한 칸 이동
+
         # 비동기 I2C 쓰기 큐
         self._queue = queue.Queue(maxsize=4)
         self._stop = threading.Event()
@@ -56,6 +65,11 @@ class LCDDisplay:
     def show_sentence(self, sentence):
         self._enqueue(lambda: self._show_sentence_sync(sentence))
 
+    def show_persona(self, label):
+        """현재 출력 페르소나(예: 'Polite'/'Friendly')를 상단 줄 우측에 표시한다."""
+        self._persona_label = label
+        self._enqueue(lambda: self._write_line_sync(0, self._line0(self._last_state)))
+
     def close(self):
         self._stop.set()
 
@@ -76,13 +90,25 @@ class LCDDisplay:
     def _worker_loop(self):
         while not self._stop.is_set():
             try:
-                fn = self._queue.get(timeout=0.5)
+                fn = self._queue.get(timeout=self._tick)
             except queue.Empty:
+                self._scroll_tick()  # 큐가 비면 전광판 한 칸 이동
                 continue
             try:
                 fn()
             except Exception as e:
                 print(f"[LCD] worker error: {e}")
+
+    def _scroll_tick(self):
+        """활성 marquee가 있으면 한 칸 좌로 이동해 다시 그린다."""
+        m = self._marquee
+        if not m:
+            return
+        full = m["text"]
+        pos = m["pos"]
+        window = (full + full)[pos:pos + LCD_NUM_COLS]
+        self._write_line_sync(m["line"], window)
+        m["pos"] = (pos + 1) % len(full)
 
     # ── 동기(워커 내부 실행용) ─────────────────────────────────────
     def _clear_sync(self):
@@ -103,24 +129,39 @@ class LCDDisplay:
         for char in text:
             self._write_byte(ord(char), LCD_CHR)
 
+    def _line0(self, state=None):
+        """상단 줄 = 현재 페르소나만 표시(상태 문구 생략 — 글자 잘림 방지)."""
+        if self._persona_label:
+            return f"Style: {self._persona_label}"
+        return "KSL-LLM-IoT"
+
     def _show_recognition_sync(self, word, confidence):
-        self._write_line_sync(0, "[ KSL Recognized ]")
+        self._marquee = None  # 인식 표시 중에는 스크롤 중지
+        self._write_line_sync(0, self._line0("Recognized"))
         self._write_line_sync(1, f"> {word}")
         self._write_line_sync(2, f"  Conf: {confidence:.0%}")
         self._write_line_sync(3, "")
 
     def _show_buffer_sync(self, buffer_preview):
-        self._write_line_sync(0, "[ Word Buffer    ]")
+        self._marquee = None
+        self._write_line_sync(0, self._line0("Word Buffer"))
         self._write_line_sync(1, buffer_preview[:LCD_NUM_COLS])
         self._write_line_sync(2, "")
         self._write_line_sync(3, " Press DONE button")
 
     def _show_sentence_sync(self, sentence):
-        self._write_line_sync(0, "[ Generated      ]")
-        words = sentence[:LCD_NUM_COLS * 3]
-        for i in range(3):
-            chunk = words[i * LCD_NUM_COLS:(i + 1) * LCD_NUM_COLS]
-            self._write_line_sync(i + 1, chunk)
+        self._write_line_sync(0, self._line0("Generated"))
+        self._write_line_sync(3, "")
+        if len(sentence) <= LCD_NUM_COLS:
+            # 한 줄에 들어가면 정적 표시(스크롤 불필요)
+            self._marquee = None
+            self._write_line_sync(1, sentence)
+            self._write_line_sync(2, "")
+        else:
+            # 길면 전광판 스크롤 — 큐가 비는 동안 좌로 흐른다(완료 후 버퍼 비면 동작)
+            self._marquee = {"text": sentence + "    ", "pos": 0, "line": 1}
+            self._write_line_sync(2, "")
+            self._scroll_tick()  # 첫 프레임 즉시 표시
 
     # ── 하드웨어 직접 I/O (워커 스레드에서만 호출됨) ───────────────
     def _init_lcd(self):

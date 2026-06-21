@@ -133,6 +133,18 @@ class KSLClassifier:
         seq[left_absent | right_absent, WRIST_VEC_START:WRIST_VEC_START + 3] = 0.0
         return seq
 
+    def reset_recognition(self):
+        """인식 파이프라인을 초기화한다 — 문장 완료 직후 호출.
+
+        완료 후 리뷰/페르소나 변경 동안 손이 화면에 남아 있어도 잔여 단어가
+        버퍼에 쌓이지 않게 한다(다음 단어는 새 1초 창부터 인식). 이를 생략하면
+        완료 재누름이 새로 쌓인 단어로 문장을 만들어 재생성이 어긋난다.
+        """
+        self.sequence_buffer.clear()
+        self._no_hand_count = 0
+        self._last_word = None
+        self._last_word_time = 0.0
+
     def predict(self, now=None):
         """
         최근 1초 창이 준비됐을 때 추론을 실행합니다.
