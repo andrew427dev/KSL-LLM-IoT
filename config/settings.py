@@ -12,7 +12,7 @@ load_dotenv()
 # ── Gemini API ──────────────────────────────────────────
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = "gemini-2.5-flash"
-GEMINI_MAX_TOKENS = 100
+GEMINI_MAX_TOKENS = 256
 
 GEMINI_SYSTEM_PROMPT = """
 너는 한국 수화(KSL) 번역 보조 AI야.

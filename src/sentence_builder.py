@@ -76,6 +76,10 @@ class SentenceBuilder:
             ),
             max_output_tokens=GEMINI_MAX_TOKENS,
             temperature=0.3,
+            # gemini-2.5-flash는 thinking 모델 — 사고 토큰이 출력 예산을 잠식해
+            # 문장이 잘린다. 짧은 번역 문장 생성엔 thinking 불필요하므로 끈다
+            # (출력 예산 확보 + 지연 감소).
+            thinking_config=types.ThinkingConfig(thinking_budget=0),
         )
 
     def add_word(self, word):
