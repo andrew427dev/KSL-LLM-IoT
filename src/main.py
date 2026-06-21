@@ -35,9 +35,8 @@ from config.settings import (
 # 페르소나별 비프 횟수 — 정중 1회, 친근 2회 (선언 순서). 초기화(undo)는 3회로 구분.
 # 화면을 보지 않아도 어떤 문체가 적용됐는지 소리로 구분한다.
 _PERSONA_BEEPS = {name: i + 1 for i, name in enumerate(SENTENCE_PERSONAS)}
-
-# 마지막으로 출력한 문장 (한국어, 영어) — 완료 버튼 재누름 시 재생용.
-_last_sentence = None
+# 페르소나 한국어 → LCD 표기(영어). HD44780은 한글 렌더링 불가.
+_PERSONA_EN = {"정중": "Polite", "친근": "Friendly"}
 
 # 브라우저 라이브 프리뷰(MJPEG)용 최신 주석 프레임 홀더 (KSL_STREAM 활성 시 사용).
 _stream = {"frame": None, "lock": threading.Lock()}
@@ -273,17 +272,17 @@ def _handle_control_event(event, builder, lcd, tts):
 
     event: EVENT_COMPLETE(문장 완료/재생), EVENT_UNDO(마지막 단어 제거),
     또는 페르소나 이름("정중"/"친근").
-    완료: 버퍼에 단어가 있으면 새 문장 생성, 비어 있으면 마지막 문장을 재생한다
-    (완료 버튼 재누름 = 다시 듣기). 둘 다 길게 1회 비프 + LED로 신호한다.
+    완료: 버퍼에 단어가 있으면 새 문장 생성, 비어 있으면 마지막 단어를 현재
+    페르소나로 다시 생성한다(완료 재누름 = 바뀐 문체로 재출력). 둘 다 길게 1회 비프+LED.
     초기화: 버퍼의 마지막 단어 1개를 제거(오인식 복구), 짧게 3회 비프 + LED.
     """
     if event == EVENT_COMPLETE:
         if builder.trigger_sentence():
             beep(long=True)
             lcd.write_line(3, "Generating...")
-        elif _last_sentence is not None:
+        elif builder.regenerate_last():  # 빈 버퍼 — 마지막 단어를 현재 페르소나로 재생성
             beep(long=True)
-            _output_sentence(_last_sentence, tts, lcd)  # 마지막 문장 재생
+            lcd.write_line(3, "Generating...")
         return
     if event == EVENT_UNDO:
         removed = builder.undo_last_word()
@@ -294,6 +293,7 @@ def _handle_control_event(event, builder, lcd, tts):
         return
     if builder.set_persona(event):
         beep(_PERSONA_BEEPS.get(event, 1))
+        lcd.show_persona(_PERSONA_EN.get(event, event))  # LCD 상단에 현재 문체 표시
         print(f"[Main] Sentence persona: {event}")
 
 
@@ -349,6 +349,7 @@ def main():
     lcd.write_line(1, "Show your sign...")
     lcd.write_line(2, "")
     lcd.write_line(3, "")
+    lcd.show_persona(_PERSONA_EN.get(builder.persona, builder.persona))  # 시작 문체 표시
 
     print("[Main] System ready. Press 'q' to quit.")
 
@@ -440,12 +441,7 @@ def main():
 
 
 def _output_sentence(sentence, tts, lcd):
-    """(한국어, 영어) 문장 출력 — 음성은 한국어, LCD는 영어(한글 렌더링 불가).
-
-    마지막 문장을 보관해 완료 버튼 재누름(버퍼 빈 상태) 시 재생할 수 있게 한다.
-    """
-    global _last_sentence
-    _last_sentence = sentence
+    """(한국어, 영어) 문장 출력 — 음성은 한국어, LCD는 영어(한글 렌더링 불가)."""
     korean, english = sentence
     print(f"\n[Sentence] {korean}  /  {english}\n")
     lcd.show_sentence(english)

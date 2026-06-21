@@ -34,6 +34,10 @@ class LCDDisplay:
             print(f"[LCD] Init failed (running without LCD): {e}")
             self.available = False
 
+        # 상단 줄(line 0) 상태 — 좌측 상태 태그 + 우측 현재 페르소나 표시용
+        self._persona_label = ""
+        self._last_state = "KSL"
+
         # 비동기 I2C 쓰기 큐
         self._queue = queue.Queue(maxsize=4)
         self._stop = threading.Event()
@@ -55,6 +59,11 @@ class LCDDisplay:
 
     def show_sentence(self, sentence):
         self._enqueue(lambda: self._show_sentence_sync(sentence))
+
+    def show_persona(self, label):
+        """현재 출력 페르소나(예: 'Polite'/'Friendly')를 상단 줄 우측에 표시한다."""
+        self._persona_label = label
+        self._enqueue(lambda: self._write_line_sync(0, self._line0(self._last_state)))
 
     def close(self):
         self._stop.set()
@@ -103,20 +112,28 @@ class LCDDisplay:
         for char in text:
             self._write_byte(ord(char), LCD_CHR)
 
+    def _line0(self, state):
+        """상단 줄: 좌측 상태 태그 + 우측 현재 페르소나(예: 'Generated   [Polite]')."""
+        self._last_state = state
+        tag = f"[{self._persona_label}]" if self._persona_label else ""
+        left = state[:max(0, LCD_NUM_COLS - len(tag))]
+        pad = max(0, LCD_NUM_COLS - len(left) - len(tag))
+        return left + (" " * pad) + tag
+
     def _show_recognition_sync(self, word, confidence):
-        self._write_line_sync(0, "[ KSL Recognized ]")
+        self._write_line_sync(0, self._line0("Recognized"))
         self._write_line_sync(1, f"> {word}")
         self._write_line_sync(2, f"  Conf: {confidence:.0%}")
         self._write_line_sync(3, "")
 
     def _show_buffer_sync(self, buffer_preview):
-        self._write_line_sync(0, "[ Word Buffer    ]")
+        self._write_line_sync(0, self._line0("Word Buffer"))
         self._write_line_sync(1, buffer_preview[:LCD_NUM_COLS])
         self._write_line_sync(2, "")
         self._write_line_sync(3, " Press DONE button")
 
     def _show_sentence_sync(self, sentence):
-        self._write_line_sync(0, "[ Generated      ]")
+        self._write_line_sync(0, self._line0("Generated"))
         words = sentence[:LCD_NUM_COLS * 3]
         for i in range(3):
             chunk = words[i * LCD_NUM_COLS:(i + 1) * LCD_NUM_COLS]

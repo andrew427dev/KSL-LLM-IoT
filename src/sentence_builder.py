@@ -46,6 +46,7 @@ class SentenceBuilder:
 
         self.word_buffer = []
         self._last_word_time = time.time()
+        self._last_words = None  # 마지막 생성에 쓰인 단어들 — 완료 재누름 시 재생성용
         self._completed = queue.Queue()
         self._inflight = False
         self._inflight_lock = threading.Lock()
@@ -155,10 +156,31 @@ class SentenceBuilder:
                 return
             words = self.word_buffer.copy()
             self.word_buffer.clear()
-            self._inflight = True
-            # 시작 시점 config 스냅샷 — 생성 중 페르소나 변경과의 경쟁 차단
-            gen_config = None if self._offline else self._gen_config
+            self._start_locked(words)
 
+    def regenerate_last(self):
+        """마지막에 생성한 단어들을 현재 페르소나로 다시 문장 생성한다.
+
+        버퍼가 빈 상태에서 완료 버튼을 다시 누를 때 사용 — 페르소나를 바꾼 뒤
+        재누르면 바뀐 문체로 같은 단어가 재출력된다. 시작했으면 True,
+        마지막 단어가 없거나 생성 중이면 False를 반환한다.
+        """
+        with self._inflight_lock:
+            if self._inflight or not self._last_words:
+                return False
+            self._start_locked(list(self._last_words))
+        return True
+
+    def _start_locked(self, words):
+        """_inflight_lock 보유 상태에서 워커를 시작한다.
+
+        현재 페르소나 config를 스냅샷해 넘기므로(생성 중 페르소나 변경과의 경쟁
+        차단), 재생성 시점의 페르소나가 결정적으로 적용된다. words는 재생성을 위해
+        _last_words에도 보관한다.
+        """
+        self._last_words = list(words)
+        self._inflight = True
+        gen_config = None if self._offline else self._gen_config
         threading.Thread(
             target=self._generate_worker,
             args=(words, gen_config),
