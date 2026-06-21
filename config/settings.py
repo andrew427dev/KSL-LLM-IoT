@@ -43,6 +43,22 @@ SENTENCE_PERSONA = os.getenv("SENTENCE_PERSONA", "정중")
 if SENTENCE_PERSONA not in SENTENCE_PERSONAS:
     SENTENCE_PERSONA = "정중"
 
+# 한 번의 호출로 모든 페르소나 문장을 동시에 생성하는 프롬프트(토큰 절약).
+# 출력은 페르소나당 한 줄, 파이프(|) 3칸: 페르소나|한국어|영어(ASCII).
+# 페르소나 정의는 SENTENCE_PERSONAS를 단일 출처로 재사용한다.
+GEMINI_PERSONAS_PROMPT = (
+    "너는 한국 수화(KSL) 번역 보조 AI야.\n"
+    "인식된 단어 목록을 아래 각 문체의 한국어 문장으로 모두 변환한다.\n"
+    "입력 단어는 실시간 수화 인식 결과라 오인식·중복·순서 오류가 섞일 수 있다 — "
+    "의미를 파악해 자연스럽게 만들고, 반복 단어는 한 번만, 전체 맥락에 명백히 "
+    "어울리지 않는 단어 하나는 무리하게 넣지 않는다. 모든 문체는 같은 의미를 담는다.\n"
+    + "\n".join(f"{name} {instr}" for name, instr in SENTENCE_PERSONAS.items())
+    + "\n출력은 정확히 " + str(len(SENTENCE_PERSONAS)) + "줄, 각 줄은 파이프(|)로 "
+    "구분된 3칸이며 설명·라벨·머리말 없이:\n"
+    + "\n".join(f"{name}|<{name} 한국어 문장>|<영어 번역, ASCII만>"
+                for name in SENTENCE_PERSONAS)
+)
+
 # ── Model ───────────────────────────────────────────────
 MODEL_PATH = os.getenv("MODEL_PATH", "model/ksl_model.tflite")
 CONFIDENCE_THRESHOLD = float(os.getenv("CONFIDENCE_THRESHOLD", 0.85))

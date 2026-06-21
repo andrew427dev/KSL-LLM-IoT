@@ -277,19 +277,28 @@ def _handle_control_event(event, builder, lcd, tts):
     초기화: 버퍼의 마지막 단어 1개를 제거(오인식 복구), 짧게 3회 비프 + LED.
     """
     if event == EVENT_COMPLETE:
-        # 버퍼에 단어가 있으면 새 생성, 없으면 마지막 단어를 현재 페르소나로 재생성.
-        if builder.trigger_sentence() or builder.regenerate_last():
+        # 버퍼에 단어가 있으면 새 생성(전 페르소나 1회 호출), 없으면 현재 페르소나 캐시 재생.
+        if builder.trigger_sentence():
             beep(long=True)
             lcd.write_line(3, "Generating...")
             return True  # 호출자가 인식 파이프라인을 리셋하도록 신호
+        if builder.replay_current():  # 캐시 재생 — Gemini 호출 없이 즉시 출력
+            beep(long=True)
+            return True
         return False
     if event == EVENT_UNDO:
         removed = builder.undo_last_word()
         if removed:
-            beep(3)  # 초기화: 짧게 3회 (단어1·완료길게·페르소나1/2와 구분)
+            # 단어 입력 중: 마지막 단어 제거 — 짧게 3회
+            beep(3)
             print(f"[Main] Undo: removed '{removed}'")
             # 지운 단어가 LCD에 남지 않도록 버퍼 미리보기 즉시 갱신(빈 버퍼면 비움)
             lcd.show_buffer(builder.get_buffer_preview(english=True))
+        elif builder.reroll_current():
+            # 문장 출력 후(버퍼 빔): 현재 페르소나 문장만 재생성 — 길게 1회
+            beep(long=True)
+            print("[Main] Undo: reroll current persona")
+            lcd.write_line(3, "Generating...")
         return False
     if builder.set_persona(event):
         beep(_PERSONA_BEEPS.get(event, 1))
