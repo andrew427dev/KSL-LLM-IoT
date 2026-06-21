@@ -28,7 +28,7 @@ except ImportError:
     import tensorflow.lite as tflite
 
 from model.train import load_dataset, HOLDOUT_MANIFEST
-from config.settings import KSL_LABELS, MODEL_PATH, SEQUENCE_LENGTH, FEATURE_DIM
+from config.settings import KSL_LABELS, KSL_LABELS_EN, MODEL_PATH, SEQUENCE_LENGTH, FEATURE_DIM
 
 
 def _load_holdout(manifest_path):
@@ -107,8 +107,10 @@ def evaluate():
     im = ax.imshow(cm, cmap='Blues')
     ax.set_xticks(range(len(KSL_LABELS)))
     ax.set_yticks(range(len(KSL_LABELS)))
-    ax.set_xticklabels(KSL_LABELS, rotation=90, fontsize=8)
-    ax.set_yticklabels(KSL_LABELS, fontsize=8)
+    # 한글 라벨은 matplotlib 기본 폰트에서 □로 깨지므로 ASCII 영어 라벨로 표시한다.
+    _en_labels = [KSL_LABELS_EN.get(w, w) for w in KSL_LABELS]
+    ax.set_xticklabels(_en_labels, rotation=90, fontsize=8)
+    ax.set_yticklabels(_en_labels, fontsize=8)
     ax.set_xlabel('Predicted')
     ax.set_ylabel('Actual')
     ax.set_title('Confusion Matrix — KSL Classifier')
