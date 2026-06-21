@@ -50,7 +50,7 @@ content(2, "The Problem", [
 // 3 — Concept
 content(3, "Concept — One-Line Pipeline", [
   "Camera → MediaPipe (2 hands) → 131-dim feature → LSTM (TFLite)",
-  "→ word buffer → [button | 완료 sign | 3 s silence] → Gemini 2.5 Flash",
+  "→ word buffer → [complete button | 완료 sign] → Gemini 2.5 Flash",
   "→ TTS (Korean) + LCD (English)",
   { t: "Perception is local (privacy, latency); only sentence generation calls the cloud", lvl: 0 },
 ]);
@@ -60,7 +60,7 @@ content(4, "System Architecture", [
   "Presentation layer — LCD display + TTS audio",
   "Application layer — sentence buffer + LLM controller (persona)",
   "AI / ML layer — MediaPipe → LSTM (TFLite) inference",
-  "Hardware layer — Raspberry Pi 4B, camera, GPIO buttons, buzzer",
+  "Hardware layer — Raspberry Pi 4B, camera, GPIO buttons, buzzer, status LED",
 ]);
 
 // 5 — Feature
@@ -104,18 +104,19 @@ content(9, "Leakage-Corrected Evaluation", [
 
 // 10 — LLM
 content(10, "LLM Sentence Generation + Persona", [
-  "Word buffer → Gemini 2.5 Flash with a persona system prompt",
-  "Persona: polite / friendly / brief",
+  "Word buffer → Gemini 2.5 Flash with a persona system prompt (polite / friendly = casual)",
+  "One call generates BOTH personas and caches them — persona switch / re-press = 0 extra calls",
   "Async worker — the camera loop never blocks",
   "Offline fallback = plain word concatenation",
 ]);
 
 // 11 — Hardware
 content(11, "Hardware & Accessibility", [
-  "USB webcam, I2C LCD 20×4, active buzzer, 4 push buttons",
-  "Buttons = complete + 3 personas; internal pull-ups to GND (no resistors)",
-  "Beep 1 / 2 / 3 times = non-visual persona confirmation",
-  { t: "Designed for deaf / hard-of-hearing users who cannot rely on audio cues", lvl: 0 },
+  "USB webcam, I2C LCD 20×4, active buzzer, status LED (GPIO22), 4 push buttons (complete + undo + 2 personas)",
+  "Internal pull-ups to GND (no external resistors)",
+  "Buzzer + LED blink in sync (1 / 2×) = persona confirmation — the LED gives deaf / HoH users the cue visually",
+  "Sentence complete = single long beep+LED (vs short per-word); persona switch / re-press = replay cached sentence",
+  { t: "Undo button: remove last word (while entering) or re-generate the sentence (after output)", lvl: 0 },
 ]);
 
 // 12 — Software
@@ -137,7 +138,7 @@ content(13, "Engineering Pitfalls Solved", [
 s = p.addSlide(); s.background = { color: WHITE };
 s.addShape(p.ShapeType.rect, { x: 0.5, y: 0.55, w: 0.16, h: 0.5, fill: { color: NAVY } });
 s.addText("Results", { x: 0.8, y: 0.45, w: 12, h: 0.7, fontFace: TITLE_FONT, fontSize: 30, bold: true, color: NAVY });
-const cards = [["0.94", "held-out accuracy\n(deployed TFLite, 2 unseen signers)"], ["27 / 30", "words reliable\non the physical device"], ["740 KB", "TFLite model size\n(float32)"], ["6.4 FPS", "end-to-end on RPi 4B\n(target ≥20 — Future Work)"]];
+const cards = [["0.72", "held-out accuracy\n(deployed TFLite, 2 unseen signers)"], ["27 / 30", "words reliable\non the physical device"], ["740 KB", "TFLite model size\n(float32)"], ["6.4 FPS", "end-to-end on RPi 4B\n(target ≥20 — Future Work)"]];
 cards.forEach((c, i) => {
   const x = 0.85 + (i % 2) * 6.1, y = 1.7 + Math.floor(i / 2) * 2.5;
   s.addShape(p.ShapeType.roundRect, { x, y, w: 5.7, h: 2.2, fill: { color: "F2F5FB" }, line: { color: ICE, width: 1 }, rectRadius: 0.1 });
@@ -147,11 +148,11 @@ cards.forEach((c, i) => {
 footer(s, 14);
 
 // 15 — Integrity
-content(15, "Evaluation Integrity — Keras vs TFLite", [
-  "Same 2,595 inputs: Keras 0.71 (CPU = GPU) vs deployed TFLite 0.94",
-  "Models disagree on 30% of samples",
-  "On those disagreements: TFLite correct 650 vs Keras 59",
-  { t: "RPi runs the TFLite file → 0.94 is the faithful deployed number (reported with caveats)", lvl: 0 },
+content(15, "Evaluation Integrity — we found & fixed our own eval bug", [
+  "Earlier eval showed 0.94 vs Keras 0.71 on the same 2,595 inputs — too good to be true",
+  "Root cause: TFLite LSTM state NOT reset between samples + label-sorted holdout → same-label carryover",
+  "Fix (reset_all_variables() per inference): TFLite == Keras == 0.7168 (shuffle-leaked = 0.45 confirms)",
+  { t: "Corrected on-device path too → 0.72 is the honest deployed number", lvl: 0 },
 ]);
 
 // 16 — Limitations
@@ -181,4 +182,4 @@ s.addText([
 s.addText("Live / recorded demo  →  Q&A", { x: 1.0, y: 5.2, w: 11, h: 0.8, fontFace: TITLE_FONT, fontSize: 24, bold: true, color: WHITE });
 s.addText("Thank you", { x: 1.0, y: 6.1, w: 11, h: 0.6, fontFace: BODY_FONT, fontSize: 16, italic: true, color: ICE });
 
-p.writeFile({ fileName: "/tmp/ksl-review/docs/KSL-LLM-IoT_Slides.pptx" }).then((f) => console.log("WROTE", f));
+p.writeFile({ fileName: "/Users/leesung-joon/Desktop/KSL-LLM-IoT/docs/KSL-LLM-IoT_Slides.pptx" }).then((f) => console.log("WROTE", f));

@@ -62,8 +62,8 @@ Hardware & Software Details / Results & Contributions / Future Work
 4. **LSTM classifier** — 2×LSTM(128,64)+Dense, ~196k params, 30 classes,
    input (30,131). float32 TFLite 740KB.
 5. **LLM sentence generation** — word list → Gemini 2.5 Flash, persona
-   (polite/friendly/brief)별 system prompt, async worker(카메라 루프 비차단),
-   offline fallback.
+   (polite/friendly)별 system prompt, 1회 호출로 두 페르소나 동시 생성·캐시
+   (토큰 절약, 전환 시 0 호출), async worker(카메라 루프 비차단), offline fallback.
 6. **Methodology of robustness** — confidence 0.85 + 3.0s dedup,
    10-frame no-hand buffer reset, handedness x-fallback, flip 증강의
    방향 의존 수어 opt-out.
@@ -77,12 +77,12 @@ Hardware & Software Details / Results & Contributions / Future Work
 | I2C LCD 20×4 (0x27) | I2C | GPIO2/3 |
 | Active buzzer | GPIO out | GPIO17 |
 | Status LED (mirrors buzzer, via resistor) | GPIO out | GPIO22 |
-| Push buttons ×4 (complete + persona×3) | GPIO in (internal pull-up) | GPIO5/6/13/19 ↔ GND |
+| Push buttons ×4 (complete + undo + persona×2) | GPIO in (internal pull-up) | GPIO5/6/13/19 ↔ GND |
 | Speaker | 3.5mm/USB | — |
 
 - Fig.4 결선도 `docs/wiring_diagram.png`
 - 버튼 회로: 내부 풀업 + GND 스위칭 (전류 ~66µA, 외부 저항 불필요, 안전 근거)
-- 부저+LED 동기 점멸 1/2/3회 = 페르소나 확인 (LED = 농인용 시각 피드백, 접근성). 완료 = 길게 1회, 완료 재누름 = 마지막 문장 재생
+- 부저+LED 동기 점멸 1/2회 = 페르소나(정중/친근) 확인 (LED = 농인용 시각 피드백, 접근성). 완료 = 길게 1회, 페르소나 전환·완료 재누름 = 캐시 문장 재생. undo 버튼 = 단어 입력 중 마지막 단어 제거 / 문장 출력 후 현재 문체 재생성
 
 **표: S/W 스택**
 | Layer | Tech | 비고 |

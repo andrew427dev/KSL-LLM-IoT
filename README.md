@@ -25,7 +25,7 @@ Camera → MediaPipe Hands (2 hands, handedness-aware)
 
 | Category | Technology |
 |----------|-----------|
-| Hardware | Raspberry Pi 4B, Pi Camera (v1 / v2 / Module 3), I2C LCD 20×4, GPIO Buzzer, Push buttons ×4 (sentence-complete + persona) |
+| Hardware | Raspberry Pi 4B, Pi Camera (v1 / v2 / Module 3), I2C LCD 20×4, GPIO Buzzer, Status LED, Push buttons ×4 (complete + undo + persona ×2) |
 | Language | Python **3.11** (mediapipe has no aarch64 wheels for Python 3.13 as of this writing) |
 | CV | MediaPipe Hands, OpenCV 4 |
 | AI/ML | TensorFlow (PC training) / `tflite-runtime` (RPi inference) |
@@ -53,8 +53,8 @@ KSL-LLM-IoT/
 │   ├── hand_tracker.py     # MediaPipe → 131-dim feature (handedness slots, x-fallback)
 │   ├── feature_format.py   # Shared 131-dim layout + normalization (train/serve single source)
 │   ├── classifier.py       # TFLite inference (dummy fallback, stale-buffer reset)
-│   ├── sentence_builder.py # Word buffer + google-genai (offline fallback, persona styles)
-│   ├── button_input.py     # Physical buttons (complete + persona ×3, queue-based)
+│   ├── sentence_builder.py # Word buffer + google-genai (offline fallback, dual-persona cache)
+│   ├── button_input.py     # Physical buttons (complete + undo + persona ×2, queue-based)
 │   ├── tts_output.py       # gTTS / pyttsx3 voice output (async)
 │   └── lcd_display.py      # I2C LCD controller (async queue)
 ├── config/
@@ -92,7 +92,7 @@ KSL-LLM-IoT/
 | Daily Nouns | 밥, 병원, 의사, 엄마, 가족, 친구, 얼마 |
 | System | **완료** (transmit trigger sign) |
 
-The word list matches AI Hub sign-language dataset headwords exactly (revised 2026-06-10; see `convert_aihub.py --exact`). Sentence generation is triggered by the **physical complete button** (GPIO5), the `완료` sign, or **3 seconds of inactivity** (`SILENCE_TRIGGER_SEC=3.0`, runs alongside the button; set to `0` for button-only).
+The word list matches AI Hub sign-language dataset headwords exactly (revised 2026-06-10; see `convert_aihub.py --exact`). Sentence generation is triggered by the **physical complete button** (GPIO5) or the `완료` sign. Silence auto-complete is disabled by default (`SILENCE_TRIGGER_SEC=0`) to avoid conflicting with the undo button; set it to a positive value to re-enable.
 
 ---
 
@@ -107,7 +107,7 @@ The word list matches AI Hub sign-language dataset headwords exactly (revised 20
 | I2C LCD | 20×4, default address `0x27` | Address override via `LCD_I2C_ADDRESS` in `.env` |
 | Active Buzzer | 3.3V or 5V active type | Pin override via `BUZZER_PIN` in `.env` |
 | Status LED | Any LED + series resistor (220–330 Ω) | Mirrors the buzzer (visual feedback for deaf users); `LED_PIN` in `.env` |
-| Push Buttons ×4 | Momentary tactile switch | Sentence-complete + persona ×3, internal pull-up (no external resistor) |
+| Push Buttons ×4 | Momentary tactile switch | Complete + undo + persona ×2, internal pull-up (no external resistor) |
 | Speaker | USB-audio type: USB only · Active 3.5mm type: 3.5mm (audio) + USB/external 5V (power) | TTS playback |
 | microSD | 32GB+, Class 10 | OS + dataset + model |
 | Power | 5V / 3A USB-C | Required when camera + speaker run concurrently |
@@ -123,11 +123,11 @@ The word list matches AI Hub sign-language dataset headwords exactly (revised 20
 | Buzzer signal | **GPIO17** (default `BUZZER_PIN`) | Pin 11 | Active buzzer + |
 | Buzzer GND | — | Pin 9 | Active buzzer − |
 | LED signal | **GPIO22** (default `LED_PIN`) | Pin 15 | LED anode (+) via 220–330 Ω resistor |
-| LED GND | — | Pin 6 | LED cathode (−) |
+| LED GND | — | Pin 25 | LED cathode (−) — GND below SPI0 SCLK (Pin 23) |
 | Complete button | **GPIO5** (`BUTTON_COMPLETE_PIN`) | Pin 29 | Button leg A (leg B → GND Pin 6) |
-| Persona: polite | **GPIO6** (`BUTTON_PERSONA_POLITE_PIN`) | Pin 31 | Button leg A (leg B → GND Pin 6) |
-| Persona: friendly | **GPIO13** (`BUTTON_PERSONA_FRIENDLY_PIN`) | Pin 33 | Button leg A (leg B → GND Pin 6) |
-| Persona: brief | **GPIO19** (`BUTTON_PERSONA_BRIEF_PIN`) | Pin 35 | Button leg A (leg B → GND Pin 6) |
+| Undo button | **GPIO6** (`BUTTON_UNDO_PIN`) | Pin 31 | Button leg A (leg B → GND Pin 6) |
+| Persona: polite | **GPIO13** (`BUTTON_PERSONA_POLITE_PIN`) | Pin 33 | Button leg A (leg B → GND Pin 6) |
+| Persona: friendly | **GPIO19** (`BUTTON_PERSONA_FRIENDLY_PIN`) | Pin 35 | Button leg A (leg B → GND Pin 6) |
 | Camera | — | USB port | USB webcam (`/dev/video0`; CSI Pi Camera also auto-detected) |
 | Audio (3.5mm) | — | 3.5mm jack | Active speaker audio in |
 | Audio power | — | USB port / external | Active speaker 5V power (USB-audio speaker: USB only) |

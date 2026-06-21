@@ -76,6 +76,7 @@ def main():
         ("GPIO 3 (SCL)", rpi_x + 0.15, rpi_y + 1.9),
         ("GPIO 17",      rpi_x + 0.15, rpi_y + 1.5),
         ("GPIO 22",      rpi_x + 0.15, rpi_y + 0.7),
+        ("GND (Pin 25)", rpi_x + 0.15, rpi_y + 0.35),
         ("5V  (Pin 2)",  rpi_x + 0.15, rpi_y + 2.7),
         ("GND (Pin 6)",  rpi_x + 0.15, rpi_y + 1.1),
         ("USB Port",     rpi_x + rpi_w - 1.2, rpi_y + 2.5),
@@ -87,8 +88,6 @@ def main():
     # ── I2C LCD 20x4 (왼쪽) ─────────────────────────────
     lcd_x, lcd_y = 0.5, 4.5
     draw_box(ax, lcd_x, lcd_y, 3.0, 1.8, "I2C LCD 20×4\n(0x27)", C_LCD, fontsize=10)
-    ax.text(lcd_x + 0.2, lcd_y + 1.2, "VCC  SDA  SCL  GND",
-            fontsize=7, color='white', zorder=5)
 
     # LCD 배선
     draw_wire(ax, lcd_x + 3.0, lcd_y + 1.5, rpi_x, rpi_y + 2.7,
@@ -103,7 +102,7 @@ def main():
     # ── 능동 부저 (왼쪽 하단) ───────────────────────────
     bz_x, bz_y = 0.5, 1.5
     bz_w, bz_h = 3.0, 1.6
-    draw_box(ax, bz_x, bz_y, bz_w, bz_h, "Active Buzzer\n(GPIO 17)", C_BUZZ, fontsize=10)
+    draw_box(ax, bz_x, bz_y, bz_w, bz_h, "Active Buzzer", C_BUZZ, fontsize=10)
     ax.text(bz_x + bz_w / 2, bz_y + 0.28, "+ = Signal     – = GND",
             fontsize=7, color='white', ha='center', va='center', zorder=5)
 
@@ -115,13 +114,13 @@ def main():
     # ── 상태 LED (버저 동기, 시각 피드백 — 농인 접근성) ─────
     led_x, led_y = 0.5, 3.35
     led_w, led_h = 3.0, 0.85
-    draw_box(ax, led_x, led_y, led_w, led_h, "Status LED (GPIO 22)\nmirrors buzzer",
+    draw_box(ax, led_x, led_y, led_w, led_h, "Status LED",
              C_LED, fontsize=8.5, text_color="#2c3e50")
     # 신호: LED anode(+) → GPIO22 (직렬 저항 220~330Ω 권장), cathode(−) → GND
     draw_wire(ax, led_x + led_w, led_y + 0.55, rpi_x, rpi_y + 0.7,
               C_WIRE_SIG, "GPIO 22")
-    draw_wire(ax, led_x + led_w, led_y + 0.2, rpi_x, rpi_y + 1.1,
-              C_WIRE_GND, "GND")
+    draw_wire(ax, led_x + led_w, led_y + 0.2, rpi_x, rpi_y + 0.35,
+              C_WIRE_GND, "GND Pin 25")
 
     # ── 푸시 버튼 ×4 (하단 중앙) ─────────────────────────
     # 각 버튼: 한쪽 다리 → 해당 GPIO, 다른 다리 → GND(물리 6, 실측 2026-06-12).
@@ -129,8 +128,8 @@ def main():
     btn_x, btn_y = 4.9, 0.5
     draw_box(ax, btn_x, btn_y, 4.2, 1.3,
              "Push Buttons ×4  (other leg → GND Pin 6)\n"
-             "Complete=GPIO5(29)  Polite=GPIO6(31)\n"
-             "Friendly=GPIO13(33)  Brief=GPIO19(35)",
+             "Complete=GPIO5(29)  Undo=GPIO6(31)\n"
+             "Polite=GPIO13(33)  Friendly=GPIO19(35)",
              C_BTN, fontsize=8)
     for i, gpio_label in enumerate(["G5", "G6", "G13", "G19"]):
         wx = btn_x + 1.1 + i * 0.9
@@ -141,19 +140,19 @@ def main():
 
     # ── USB 웹캠 (상단) ──────────────────────────────────
     cam_x, cam_y = 5.3, 7.2
-    draw_box(ax, cam_x, cam_y, 3.4, 1.2, "USB Webcam\n(/dev/video0)", C_CAM, fontsize=10)
+    draw_box(ax, cam_x, cam_y, 3.4, 1.2, "USB Webcam", C_CAM, fontsize=10)
     draw_wire(ax, cam_x + 1.7, cam_y, rpi_x + rpi_w / 2, rpi_y + rpi_h,
-              C_WIRE_SIG, "USB")
+              C_WIRE_SIG, "USB 3.0")
 
     # ── Speaker (오른쪽) — USB 5V 전원 + 3.5mm 오디오 (둘 다 필요) ──
     spk_x, spk_y = 10.2, 4.3
     spk_w, spk_h = 3.0, 1.6
     draw_box(ax, spk_x, spk_y, spk_w, spk_h,
-             "Active Speaker\nUSB = 5V power\n3.5mm = audio\n(both required)",
+             "Active Speaker\nUSB = power\n3.5mm = audio\n(both required)",
              C_SPK, fontsize=8.5)
-    # USB 전원선 → RPi USB 포트
+    # USB 전원선 → RPi USB 포트 (USB 2.0)
     draw_wire(ax, spk_x, spk_y + 1.1, rpi_x + rpi_w, rpi_y + 2.5,
-              C_WIRE_5V, "USB 5V")
+              C_WIRE_5V, "USB 2.0")
     # 3.5mm 오디오선 → RPi 3.5mm 잭
     draw_wire(ax, spk_x, spk_y + 0.4, rpi_x + rpi_w, rpi_y + 0.4,
               C_WIRE_SIG, "3.5mm audio")
@@ -177,9 +176,10 @@ def main():
         ("GPIO 3 (SCL)", "I2C LCD — Clock"),
         ("GPIO 17",      "Buzzer (+)"),
         ("GPIO 22",      "Status LED (+, via resistor)"),
-        ("GPIO 5/6/13/19", "Buttons: complete/persona x3"),
+        ("GPIO 5/6/13/19", "Buttons: complete/undo/persona x2"),
         ("5V  Pin 2",    "LCD VCC"),
-        ("GND Pin 6",    "LCD/Buzzer/LED (–) / Button legs"),
+        ("GND Pin 6",    "LCD/Buzzer (–) / Button legs"),
+        ("GND Pin 25",   "Status LED (–)"),
         ("USB Port",     "Webcam / Speaker 5V power"),
         ("3.5mm Jack",   "Speaker audio"),
     ]

@@ -32,14 +32,14 @@
 
 ## Slide 5 — Hardware (40s)
 - Raspberry Pi 4B, Pi Camera v1, I2C LCD 20×4, buzzer, status LED, speaker
-- **4 push buttons** (sentence-complete + 3 persona) — internal pull-up,
+- **4 push buttons** (complete + undo + 2 persona) — internal pull-up,
   button-to-GND wiring, no external resistors
 - Visual: wiring_diagram.png + 실물 사진
 
 ## Slide 6 — Why Buttons? Accessibility by Design (30s)
 - Recognition-latency triggers (silence timer) = unpredictable errors
 - Physical buttons: deterministic, tactile, usable without watching the screen
-- Buzzer + synchronized LED blink 1/2/3 = which persona is active (LED = visual cue for deaf/HoH); complete = long beep+LED, repeat-last-sentence on second press
+- Buzzer + synchronized LED blink 1/2 = which persona is active (LED = visual cue for deaf/HoH); complete = long beep+LED, replay cached sentence on persona switch / re-press; undo button = remove last word (while entering) or re-generate the sentence (after output)
 
 ## Slide 7 — Feature Engineering: 131-dim Two-Hand Input (40s)
 - [LEFT 63 | RIGHT 63 | wrist-to-wrist 3 | presence 2]
@@ -78,10 +78,11 @@
 
 ## Slide 12 — LLM Sentence Generation with Personas (30s)
 - Word list → Gemini 2.5 Flash with persona-specific system prompt
-- 3 styles selectable by button: polite / friendly / brief
+- 2 styles selectable by button: polite / friendly (casual speech)
+- One call generates both styles and caches them (token-saving) — persona switch = 0 extra calls
 - Demo example: "나 배고프다 밥" →
-  polite: "저는 배가 고파서 식사를 부탁드립니다."
-  brief: "밥 주세요."
+  polite: "저는 배가 고파서 밥을 부탁드립니다."
+  friendly: "나 배고픈데 밥 줘."
 - Offline fallback when no API key/network
 
 ## Slide 13 — Results (50s)
