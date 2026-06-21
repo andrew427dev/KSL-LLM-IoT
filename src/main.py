@@ -16,6 +16,7 @@ import subprocess
 import select
 import threading
 import numpy as np
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # 프로젝트 루트를 path에 추가
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -37,6 +38,9 @@ _PERSONA_BEEPS = {name: i + 1 for i, name in enumerate(SENTENCE_PERSONAS)}
 
 # 마지막으로 출력한 문장 (한국어, 영어) — 완료 버튼 재누름 시 재생용.
 _last_sentence = None
+
+# 브라우저 라이브 프리뷰(MJPEG)용 최신 주석 프레임 홀더 (KSL_STREAM 활성 시 사용).
+_stream = {"frame": None, "lock": threading.Lock()}
 
 try:
     import RPi.GPIO as GPIO
@@ -223,6 +227,47 @@ def _beep_pulse(times=1, dur=0.05):
             return
 
 
+def _start_stream_server(port=8080):
+    """주석 프레임(_stream["frame"])을 MJPEG로 서빙 — 브라우저 라이브 프리뷰.
+
+    카메라는 메인 루프가 단독 점유하므로, 별도 프리뷰 대신 인식 화면 그대로를
+    네트워크로 내보낸다. 헤드리스에서도 동작(브라우저로 확인).
+    """
+    holder = _stream
+
+    class _H(BaseHTTPRequestHandler):
+        def log_message(self, *a):
+            pass
+
+        def do_GET(self):
+            if self.path != "/":
+                self.send_response(404); self.end_headers(); return
+            self.send_response(200)
+            self.send_header("Content-Type",
+                             "multipart/x-mixed-replace; boundary=frame")
+            self.end_headers()
+            try:
+                while True:
+                    with holder["lock"]:
+                        f = holder["frame"]
+                    if f is None:
+                        time.sleep(0.05); continue
+                    ok, jpg = cv2.imencode(".jpg", f,
+                                           [cv2.IMWRITE_JPEG_QUALITY, 80])
+                    if ok:
+                        self.wfile.write(b"--frame\r\n"
+                                         b"Content-Type: image/jpeg\r\n\r\n")
+                        self.wfile.write(jpg.tobytes())
+                        self.wfile.write(b"\r\n")
+                    time.sleep(0.04)
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+
+    srv = ThreadingHTTPServer(("0.0.0.0", port), _H)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
 def _handle_control_event(event, builder, lcd, tts):
     """물리 버튼·GUI 키 공통 제어 이벤트 처리.
 
@@ -273,6 +318,18 @@ def main():
         buttons = ButtonInput(GPIO)
         print("[Main] Physical buttons ready "
               "(complete + persona x3, see USER_MANUAL §1.1).")
+
+    # 브라우저 라이브 프리뷰 (MJPEG) — KSL_STREAM=1(기본 8080) 또는 포트 번호.
+    # 인식 화면(카메라+랜드마크+버퍼)을 그대로 스트리밍한다(헤드리스에서도 동작).
+    stream_port = os.environ.get("KSL_STREAM")
+    stream_enabled = bool(stream_port)
+    if stream_enabled:
+        try:
+            port = 8080 if stream_port in ("1", "") else int(stream_port)
+        except ValueError:
+            port = 8080
+        _start_stream_server(port)
+        print(f"[Main] MJPEG live preview: http://0.0.0.0:{port}/")
 
     cap = CameraReader(index=CAMERA_INDEX,
                        width=CAMERA_WIDTH,
@@ -330,11 +387,17 @@ def main():
             if preview and not result:
                 lcd.show_buffer(preview)
 
-            # 6. 디버그 뷰 (헤드리스에선 창 띄우지 않음)
-            if not headless:
+            # 6. 화면 표시(GUI) / 브라우저 스트림용 주석 프레임 생성
+            #    GUI 모드이거나 스트림이 켜져 있으면 랜드마크·버퍼를 그린다.
+            if (not headless) or stream_enabled:
                 tracker.draw_landmarks(frame)
                 cv2.putText(frame, f"Buffer: {preview}", (10, 30),
                             cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 0), 2)
+            if stream_enabled:
+                with _stream["lock"]:
+                    _stream["frame"] = frame.copy()
+
+            if not headless:
                 cv2.imshow("KSL-LLM-IoT", frame)
                 key = cv2.waitKey(1) & 0xFF
                 if key == ord('q'):
