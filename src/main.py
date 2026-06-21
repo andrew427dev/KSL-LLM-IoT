@@ -277,13 +277,12 @@ def _handle_control_event(event, builder, lcd, tts):
     초기화: 버퍼의 마지막 단어 1개를 제거(오인식 복구), 짧게 3회 비프 + LED.
     """
     if event == EVENT_COMPLETE:
-        if builder.trigger_sentence():
+        # 버퍼에 단어가 있으면 새 생성, 없으면 마지막 단어를 현재 페르소나로 재생성.
+        if builder.trigger_sentence() or builder.regenerate_last():
             beep(long=True)
             lcd.write_line(3, "Generating...")
-        elif builder.regenerate_last():  # 빈 버퍼 — 마지막 단어를 현재 페르소나로 재생성
-            beep(long=True)
-            lcd.write_line(3, "Generating...")
-        return
+            return True  # 호출자가 인식 파이프라인을 리셋하도록 신호
+        return False
     if event == EVENT_UNDO:
         removed = builder.undo_last_word()
         if removed:
@@ -377,12 +376,16 @@ def main():
 
                 # 3. 단어 버퍼에 추가 (비동기 — 즉시 반환)
                 builder.add_word(word)
+                if word == TRIGGER_WORD:
+                    # 완료 수어로 생성 시작 — 인식 리셋(잔여 손동작 누적 방지)
+                    classifier.reset_recognition()
 
             # 4. 물리 버튼 처리 — 문장 완료 / 페르소나 전환
             if buttons:
                 event = buttons.poll()
                 if event:
-                    _handle_control_event(event, builder, lcd, tts)
+                    if _handle_control_event(event, builder, lcd, tts):
+                        classifier.reset_recognition()  # 완료/재생성 직후 인식 리셋
 
             # 4a. 침묵 트리거 확인 (기본 비활성 — SILENCE_TRIGGER_SEC 참조)
             builder.check_silence_trigger()
@@ -414,7 +417,8 @@ def main():
                     break
                 elif key == ord(' '):
                     # SPACE = 문장 완료 (물리 완료 버튼과 동일 경로)
-                    _handle_control_event(EVENT_COMPLETE, builder, lcd, tts)
+                    if _handle_control_event(EVENT_COMPLETE, builder, lcd, tts):
+                        classifier.reset_recognition()
                 elif key == ord('p'):
                     # 문장 페르소나 순환 (정중 → 친근 → ...)
                     names = list(SENTENCE_PERSONAS)

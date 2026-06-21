@@ -38,6 +38,11 @@ class LCDDisplay:
         self._persona_label = ""
         self._last_state = "KSL"
 
+        # 전광판(marquee) 스크롤 — 긴 문장을 한 줄에서 좌로 흘려 전체를 읽게 한다.
+        # {text, pos, line} 또는 None. 워커 스레드에서만 접근.
+        self._marquee = None
+        self._tick = 0.4  # 스크롤 간격(초) — 큐가 비었을 때 한 칸 이동
+
         # 비동기 I2C 쓰기 큐
         self._queue = queue.Queue(maxsize=4)
         self._stop = threading.Event()
@@ -85,13 +90,25 @@ class LCDDisplay:
     def _worker_loop(self):
         while not self._stop.is_set():
             try:
-                fn = self._queue.get(timeout=0.5)
+                fn = self._queue.get(timeout=self._tick)
             except queue.Empty:
+                self._scroll_tick()  # 큐가 비면 전광판 한 칸 이동
                 continue
             try:
                 fn()
             except Exception as e:
                 print(f"[LCD] worker error: {e}")
+
+    def _scroll_tick(self):
+        """활성 marquee가 있으면 한 칸 좌로 이동해 다시 그린다."""
+        m = self._marquee
+        if not m:
+            return
+        full = m["text"]
+        pos = m["pos"]
+        window = (full + full)[pos:pos + LCD_NUM_COLS]
+        self._write_line_sync(m["line"], window)
+        m["pos"] = (pos + 1) % len(full)
 
     # ── 동기(워커 내부 실행용) ─────────────────────────────────────
     def _clear_sync(self):
@@ -121,12 +138,14 @@ class LCDDisplay:
         return left + (" " * pad) + tag
 
     def _show_recognition_sync(self, word, confidence):
+        self._marquee = None  # 인식 표시 중에는 스크롤 중지
         self._write_line_sync(0, self._line0("Recognized"))
         self._write_line_sync(1, f"> {word}")
         self._write_line_sync(2, f"  Conf: {confidence:.0%}")
         self._write_line_sync(3, "")
 
     def _show_buffer_sync(self, buffer_preview):
+        self._marquee = None
         self._write_line_sync(0, self._line0("Word Buffer"))
         self._write_line_sync(1, buffer_preview[:LCD_NUM_COLS])
         self._write_line_sync(2, "")
@@ -134,10 +153,17 @@ class LCDDisplay:
 
     def _show_sentence_sync(self, sentence):
         self._write_line_sync(0, self._line0("Generated"))
-        words = sentence[:LCD_NUM_COLS * 3]
-        for i in range(3):
-            chunk = words[i * LCD_NUM_COLS:(i + 1) * LCD_NUM_COLS]
-            self._write_line_sync(i + 1, chunk)
+        self._write_line_sync(3, "")
+        if len(sentence) <= LCD_NUM_COLS:
+            # 한 줄에 들어가면 정적 표시(스크롤 불필요)
+            self._marquee = None
+            self._write_line_sync(1, sentence)
+            self._write_line_sync(2, "")
+        else:
+            # 길면 전광판 스크롤 — 큐가 비는 동안 좌로 흐른다(완료 후 버퍼 비면 동작)
+            self._marquee = {"text": sentence + "    ", "pos": 0, "line": 1}
+            self._write_line_sync(2, "")
+            self._scroll_tick()  # 첫 프레임 즉시 표시
 
     # ── 하드웨어 직접 I/O (워커 스레드에서만 호출됨) ───────────────
     def _init_lcd(self):
