@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 860 565" font-family="'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',sans-serif">
+  <defs>
+    <marker id="arrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L7,3 L0,6 Z" fill="#5f6368"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="860" height="565" fill="#ffffff"/>
+  <text x="430" y="30" text-anchor="middle" font-size="19" font-weight="bold" fill="#202124">KSL-LLM-IoT 시스템 아키텍처</text>
+
+  <!-- 온디바이스(엣지) 영역 -->
+  <rect x="24" y="52" width="304" height="456" rx="12" fill="#f6f9fe" stroke="#4285f4" stroke-width="2" stroke-dasharray="7 5"/>
+  <text x="40" y="76" font-size="14" font-weight="bold" fill="#4285f4">온디바이스 (Raspberry Pi 4B)</text>
+
+  <!-- 클라우드 영역 -->
+  <rect x="372" y="366" width="206" height="96" rx="12" fill="#fffdf5" stroke="#fbbc04" stroke-width="2" stroke-dasharray="7 5"/>
+  <text x="388" y="388" font-size="13" font-weight="bold" fill="#f9ab00">클라우드</text>
+
+  <!-- 엣지 파이프라인 박스 (중앙 열) -->
+  <g>
+    <rect x="52" y="90" width="248" height="48" rx="8" fill="#e8f0fe" stroke="#4285f4" stroke-width="1.5"/>
+    <text x="176" y="119" text-anchor="middle" font-size="13" fill="#202124">USB 웹캠</text>
+
+    <rect x="52" y="162" width="248" height="48" rx="8" fill="#e8f0fe" stroke="#4285f4" stroke-width="1.5"/>
+    <text x="176" y="191" text-anchor="middle" font-size="13" fill="#202124">MediaPipe 양손 랜드마크 추출</text>
+
+    <rect x="52" y="234" width="248" height="50" rx="8" fill="#e6f4ea" stroke="#34a853" stroke-width="1.5"/>
+    <text x="176" y="255" text-anchor="middle" font-size="12.5" fill="#202124">131차원 특징 벡터</text>
+    <text x="176" y="272" text-anchor="middle" font-size="11" fill="#5f6368">+ 시간 리샘플링 (1초 → 30프레임)</text>
+
+    <rect x="52" y="308" width="248" height="50" rx="8" fill="#e6f4ea" stroke="#34a853" stroke-width="1.5"/>
+    <text x="176" y="329" text-anchor="middle" font-size="12.5" fill="#202124">TFLite LSTM 분류 (30단어)</text>
+    <text x="176" y="346" text-anchor="middle" font-size="11" fill="#5f6368">확신 ≥ 0.90 통과</text>
+
+    <rect x="52" y="382" width="248" height="48" rx="8" fill="#e6f4ea" stroke="#34a853" stroke-width="1.5"/>
+    <text x="176" y="411" text-anchor="middle" font-size="13" fill="#202124">단어 버퍼</text>
+  </g>
+
+  <!-- 하드웨어 입력/피드백 (엣지 하단) -->
+  <rect x="52" y="448" width="120" height="48" rx="8" fill="#f1f3f4" stroke="#5f6368" stroke-width="1.5"/>
+  <text x="112" y="468" text-anchor="middle" font-size="11" fill="#202124">물리 버튼</text>
+  <text x="112" y="483" text-anchor="middle" font-size="9.5" fill="#5f6368">완료·undo·문체</text>
+
+  <rect x="180" y="448" width="120" height="48" rx="8" fill="#f1f3f4" stroke="#5f6368" stroke-width="1.5"/>
+  <text x="240" y="468" text-anchor="middle" font-size="11" fill="#202124">부저 + LED</text>
+  <text x="240" y="483" text-anchor="middle" font-size="9.5" fill="#5f6368">동기 피드백</text>
+
+  <!-- 클라우드: Gemini -->
+  <rect x="388" y="396" width="176" height="50" rx="8" fill="#fef7e0" stroke="#fbbc04" stroke-width="1.5"/>
+  <text x="476" y="417" text-anchor="middle" font-size="12.5" fill="#202124">Gemini 2.5 Flash</text>
+  <text x="476" y="434" text-anchor="middle" font-size="11" fill="#5f6368">문장 생성 (정중/친근)</text>
+
+  <!-- 출력 -->
+  <rect x="620" y="372" width="214" height="48" rx="8" fill="#fce8e6" stroke="#ea4335" stroke-width="1.5"/>
+  <text x="727" y="401" text-anchor="middle" font-size="12.5" fill="#202124">TTS 스피커 — 한국어 음성</text>
+
+  <rect x="620" y="438" width="214" height="48" rx="8" fill="#fce8e6" stroke="#ea4335" stroke-width="1.5"/>
+  <text x="727" y="467" text-anchor="middle" font-size="12.5" fill="#202124">I2C LCD — 영어 표시</text>
+
+  <!-- 화살표: 중앙 파이프라인 -->
+  <line x1="176" y1="138" x2="176" y2="160" stroke="#5f6368" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="176" y1="210" x2="176" y2="232" stroke="#5f6368" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="176" y1="284" x2="176" y2="306" stroke="#5f6368" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="176" y1="358" x2="176" y2="380" stroke="#5f6368" stroke-width="1.6" marker-end="url(#arrow)"/>
+
+  <!-- 화살표: 버튼 → 버퍼 (입력) -->
+  <line x1="112" y1="448" x2="140" y2="432" stroke="#5f6368" stroke-width="1.4" marker-end="url(#arrow)"/>
+  <!-- 화살표: 버퍼 → 부저/LED (피드백) -->
+  <line x1="212" y1="432" x2="240" y2="446" stroke="#5f6368" stroke-width="1.4" marker-end="url(#arrow)"/>
+
+  <!-- 화살표: 버퍼 → Gemini (완료 트리거) -->
+  <line x1="300" y1="406" x2="386" y2="418" stroke="#5f6368" stroke-width="1.8" marker-end="url(#arrow)"/>
+  <text x="343" y="400" text-anchor="middle" font-size="10.5" fill="#5f6368">완료 트리거</text>
+  <text x="343" y="412" text-anchor="middle" font-size="10.5" fill="#5f6368">/ 단어열</text>
+
+  <!-- 화살표: Gemini → TTS / LCD -->
+  <line x1="564" y1="412" x2="618" y2="396" stroke="#5f6368" stroke-width="1.6" marker-end="url(#arrow)"/>
+  <line x1="564" y1="430" x2="618" y2="460" stroke="#5f6368" stroke-width="1.6" marker-end="url(#arrow)"/>
+
+  <!-- 범례 -->
+  <text x="430" y="535" text-anchor="middle" font-size="11" fill="#5f6368">파란 점선 = 온디바이스(엣지) · 노란 점선 = 클라우드.  단어 분류까지 로컬에서 처리하고, 문장 생성만 외부 호출한다.</text>
+</svg>
