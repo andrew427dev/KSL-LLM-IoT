@@ -1,6 +1,6 @@
 """
 button_input.py
-물리 버튼 4개(문장 완료 1 + 페르소나 3) 입력 처리.
+물리 버튼 4개(완료 1 + 초기화 1 + 페르소나 2) 입력 처리.
 
 배선: 각 버튼은 해당 GPIO 핀과 GND 사이에 연결한다 (내부 풀업 사용,
 외부 저항 불필요, 눌림 = LOW). 핀 배치는 config/settings.py 참조.
@@ -24,11 +24,12 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from config.settings import (
-    BUTTON_COMPLETE_PIN, BUTTON_PERSONA_PINS, BUTTON_DEBOUNCE_MS,
+    BUTTON_COMPLETE_PIN, BUTTON_UNDO_PIN, BUTTON_PERSONA_PINS, BUTTON_DEBOUNCE_MS,
 )
 
 # poll()이 반환하는 이벤트 이름
 EVENT_COMPLETE = "complete"  # 문장 완료 버튼
+EVENT_UNDO = "undo"          # 초기화 버튼 — 버퍼 마지막 단어 제거
 
 
 class ButtonInput:
@@ -41,7 +42,10 @@ class ButtonInput:
         """
         self._gpio = gpio_module
         self._time = time_fn
-        self._pin_to_event = {BUTTON_COMPLETE_PIN: EVENT_COMPLETE}
+        self._pin_to_event = {
+            BUTTON_COMPLETE_PIN: EVENT_COMPLETE,
+            BUTTON_UNDO_PIN: EVENT_UNDO,
+        }
         for persona, pin in BUTTON_PERSONA_PINS.items():
             self._pin_to_event[pin] = persona
 
@@ -59,7 +63,7 @@ class ButtonInput:
         갱신하지 않으므로 다음 poll()에서 누락 없이 검출된다.
 
         Returns:
-            EVENT_COMPLETE | 페르소나 이름("정중"/"친근"/"간단") | None
+            EVENT_COMPLETE | EVENT_UNDO | 페르소나 이름("정중"/"친근") | None
         """
         now = self._time()
         for pin, event in self._pin_to_event.items():

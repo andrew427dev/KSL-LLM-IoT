@@ -26,13 +26,13 @@ from src.classifier import KSLClassifier
 from src.sentence_builder import SentenceBuilder
 from src.tts_output import TTSOutput
 from src.lcd_display import LCDDisplay
-from src.button_input import EVENT_COMPLETE
+from src.button_input import EVENT_COMPLETE, EVENT_UNDO
 from config.settings import (
     CAMERA_INDEX, CAMERA_WIDTH, CAMERA_HEIGHT, CAMERA_FPS, BUZZER_PIN, LED_PIN,
     SENTENCE_PERSONAS, KSL_LABELS_EN, TRIGGER_WORD,
 )
 
-# 페르소나별 비프 횟수 — 정중 1회, 친근 2회, 간단 3회 (선언 순서).
+# 페르소나별 비프 횟수 — 정중 1회, 친근 2회 (선언 순서). 초기화(undo)는 3회로 구분.
 # 화면을 보지 않아도 어떤 문체가 적용됐는지 소리로 구분한다.
 _PERSONA_BEEPS = {name: i + 1 for i, name in enumerate(SENTENCE_PERSONAS)}
 
@@ -200,7 +200,7 @@ class CameraReader:
 def beep(times=1, long=False):
     """신호음 + LED 동기 점멸 (비동기). 메인 인식 루프를 블록하지 않는다.
 
-    times: 펄스 횟수 — 페르소나 버튼 피드백(정중1/친근2/간단3)처럼
+    times: 펄스 횟수 — 페르소나 버튼 피드백(정중1/친근2)·초기화(3)처럼
     화면을 보지 않아도 어떤 입력이 적용됐는지 구분하게 한다.
     long: True면 길게 1회 울린다 — 문장 완료/재생 신호를 단어 인식음과
     청각·시각 모두에서 구분한다.
@@ -271,9 +271,11 @@ def _start_stream_server(port=8080):
 def _handle_control_event(event, builder, lcd, tts):
     """물리 버튼·GUI 키 공통 제어 이벤트 처리.
 
-    event: EVENT_COMPLETE(문장 완료/재생) 또는 페르소나 이름("정중"/"친근"/"간단").
+    event: EVENT_COMPLETE(문장 완료/재생), EVENT_UNDO(마지막 단어 제거),
+    또는 페르소나 이름("정중"/"친근").
     완료: 버퍼에 단어가 있으면 새 문장 생성, 비어 있으면 마지막 문장을 재생한다
     (완료 버튼 재누름 = 다시 듣기). 둘 다 길게 1회 비프 + LED로 신호한다.
+    초기화: 버퍼의 마지막 단어 1개를 제거(오인식 복구), 짧게 3회 비프 + LED.
     """
     if event == EVENT_COMPLETE:
         if builder.trigger_sentence():
@@ -282,6 +284,13 @@ def _handle_control_event(event, builder, lcd, tts):
         elif _last_sentence is not None:
             beep(long=True)
             _output_sentence(_last_sentence, tts, lcd)  # 마지막 문장 재생
+        return
+    if event == EVENT_UNDO:
+        removed = builder.undo_last_word()
+        if removed:
+            beep(3)  # 초기화: 짧게 3회 (단어1·완료길게·페르소나1/2와 구분)
+            print(f"[Main] Undo: removed '{removed}'")
+            lcd.write_line(3, f"Undo -{KSL_LABELS_EN.get(removed, '?')}")
         return
     if builder.set_persona(event):
         beep(_PERSONA_BEEPS.get(event, 1))
@@ -310,14 +319,14 @@ def main():
     tts = TTSOutput()
     lcd = LCDDisplay()
 
-    # 물리 버튼 (RPi): 문장 완료 1 + 페르소나 3. 비-RPi 환경에서는
-    # GUI 모드의 SPACE(완료)·p(페르소나 순환) 키가 같은 역할을 한다.
+    # 물리 버튼 (RPi): 완료 1 + 초기화 1 + 페르소나 2. 비-RPi 환경에서는
+    # GUI 모드의 SPACE(완료)·z(초기화)·p(페르소나 순환) 키가 같은 역할을 한다.
     buttons = None
     if GPIO_AVAILABLE:
         from src.button_input import ButtonInput
         buttons = ButtonInput(GPIO)
         print("[Main] Physical buttons ready "
-              "(complete + persona x3, see USER_MANUAL §1.1).")
+              "(complete + undo + persona x2, see USER_MANUAL §1.1).")
 
     # 브라우저 라이브 프리뷰 (MJPEG) — KSL_STREAM=1(기본 8080) 또는 포트 번호.
     # 인식 화면(카메라+랜드마크+버퍼)을 그대로 스트리밍한다(헤드리스에서도 동작).
@@ -406,10 +415,13 @@ def main():
                     # SPACE = 문장 완료 (물리 완료 버튼과 동일 경로)
                     _handle_control_event(EVENT_COMPLETE, builder, lcd, tts)
                 elif key == ord('p'):
-                    # 문장 페르소나 순환 (정중 → 친근 → 간단 → ...)
+                    # 문장 페르소나 순환 (정중 → 친근 → ...)
                     names = list(SENTENCE_PERSONAS)
                     nxt = names[(names.index(builder.persona) + 1) % len(names)]
                     _handle_control_event(nxt, builder, lcd, tts)
+                elif key == ord('z'):
+                    # z = 초기화(마지막 단어 제거, 물리 초기화 버튼과 동일 경로)
+                    _handle_control_event(EVENT_UNDO, builder, lcd, tts)
 
     except KeyboardInterrupt:
         print("\n[Main] Interrupted by user.")

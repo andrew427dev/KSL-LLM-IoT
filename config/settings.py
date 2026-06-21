@@ -38,7 +38,6 @@ GEMINI_SYSTEM_PROMPT = """
 SENTENCE_PERSONAS = {
     "정중": "- 문체: 격식 있는 존댓말(-습니다체)로 정중하게 표현한다.",
     "친근": "- 문체: 부드러운 해요체로 친근하고 따뜻하게 표현한다.",
-    "간단": "- 문체: 핵심만 남겨 짧고 간결하게 표현한다. 한 문장으로.",
 }
 SENTENCE_PERSONA = os.getenv("SENTENCE_PERSONA", "정중")
 if SENTENCE_PERSONA not in SENTENCE_PERSONAS:
@@ -124,10 +123,10 @@ if _labels_override:
     KSL_LABELS = [w.strip() for w in _labels_override.split(",") if w.strip()]
 
 TRIGGER_WORD = "완료"
-# 무동작 자동 문장화(초). 0 이하 = 비활성.
-# 침묵 자동 발화를 물리 완료 버튼과 병행하면 단어 누적이 빨라 체감이 낫다는
-# 시운전 결과로 기본 3.0초 채택 (2026-06-12). 버튼 전용을 원하면 .env에서 0으로 둔다.
-SILENCE_TRIGGER_SEC = float(os.getenv("SILENCE_TRIGGER_SEC", 3.0))
+# 무동작 자동 문장화(초). 0 이하 = 비활성(기본).
+# 단어 단위 초기화(undo) 버튼과 충돌을 피하기 위해 침묵 자동완료는 끄고, 완료는
+# 완료 버튼(또는 완료 수어)로만 트리거한다 — 오인식을 시간 제약 없이 되돌릴 수 있다.
+SILENCE_TRIGGER_SEC = float(os.getenv("SILENCE_TRIGGER_SEC", 0))
 # 같은 단어 재인식 차단 창(초). 동작을 유지하면 버퍼 리필(~1.5초)마다
 # 같은 단어가 다시 통과하므로, 침묵 트리거(3.0)와 정렬해 한 동작당 한 단어로 제한.
 DUPLICATE_FILTER_SEC = float(os.getenv("DUPLICATE_FILTER_SEC", 3.0))
@@ -143,15 +142,16 @@ BUZZER_PIN = int(os.getenv("BUZZER_PIN", 17))
 # 부저가 울릴 때 켜지고, 꺼질 때 함께 꺼진다. 물리핀 GPIO22=15 (LED + 저항 → GND).
 LED_PIN = int(os.getenv("LED_PIN", 22))
 
-# 물리 버튼 (BCM). 내부 풀업 — 버튼은 해당 핀과 GND 사이에 연결, 눌림=LOW.
+# 물리 버튼 4개 (BCM). 내부 풀업 — 버튼은 해당 핀과 GND 사이에 연결, 눌림=LOW.
 # 물리핀: GPIO5=29, GPIO6=31, GPIO13=33, GPIO19=35 (GND: 30, 34 인접).
-# 문장 완료 버튼: 버퍼 단어를 즉시 Gemini 문장으로 변환.
-# 페르소나 버튼 3개: 문체 즉시 전환 (비프 1/2/3회 피드백).
+# 완료(5): 버퍼 단어를 즉시 Gemini 문장으로 변환.
+# 초기화(6): 버퍼의 마지막 단어 1개 제거 — 오인식 복구(undo).
+# 페르소나 2개: 문체 전환 — 정중(13, 비프 1회) / 친근(19, 비프 2회).
 BUTTON_COMPLETE_PIN = int(os.getenv("BUTTON_COMPLETE_PIN", 5))
+BUTTON_UNDO_PIN = int(os.getenv("BUTTON_UNDO_PIN", 6))
 BUTTON_PERSONA_PINS = {
-    "정중": int(os.getenv("BUTTON_PERSONA_POLITE_PIN", 6)),
-    "친근": int(os.getenv("BUTTON_PERSONA_FRIENDLY_PIN", 13)),
-    "간단": int(os.getenv("BUTTON_PERSONA_BRIEF_PIN", 19)),
+    "정중": int(os.getenv("BUTTON_PERSONA_POLITE_PIN", 13)),
+    "친근": int(os.getenv("BUTTON_PERSONA_FRIENDLY_PIN", 19)),
 }
 BUTTON_DEBOUNCE_MS = int(os.getenv("BUTTON_DEBOUNCE_MS", 300))
 

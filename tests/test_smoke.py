@@ -138,7 +138,7 @@ def test_sentence_persona_settings():
     from config.settings import (
         SENTENCE_PERSONAS, SENTENCE_PERSONA, KSL_LABELS, TRIGGER_WORD,
     )
-    assert set(SENTENCE_PERSONAS) == {"정중", "친근", "간단"}
+    assert set(SENTENCE_PERSONAS) == {"정중", "친근"}
     assert SENTENCE_PERSONA in SENTENCE_PERSONAS
     assert all(v.strip() for v in SENTENCE_PERSONAS.values())
     # KSL_LABELS 불변식도 함께 검증

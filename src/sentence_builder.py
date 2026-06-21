@@ -51,7 +51,7 @@ class SentenceBuilder:
         self._inflight_lock = threading.Lock()
 
     def set_persona(self, persona):
-        """문장 문체 페르소나를 변경한다 (정중/친근/간단).
+        """문장 문체 페르소나를 변경한다 (정중/친근).
 
         등록되지 않은 이름이면 변경하지 않고 False를 반환한다.
         오프라인 모드에서는 이름만 보관한다 (출력은 단어 나열이므로 무효과).
@@ -105,6 +105,16 @@ class SentenceBuilder:
         if can_start:
             self._trigger_async()
         return can_start
+
+    def undo_last_word(self):
+        """버퍼의 마지막 단어 1개를 제거한다 (오인식 복구, 단어 단위 초기화).
+
+        제거한 단어를 반환하고, 버퍼가 비어 있으면 None을 반환한다.
+        버퍼 조작은 모두 메인 스레드(인식 루프)에서 일어나므로 별도 락이 불필요하다.
+        """
+        if self.word_buffer:
+            return self.word_buffer.pop()
+        return None
 
     def check_silence_trigger(self):
         """
