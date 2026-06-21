@@ -42,6 +42,8 @@ class LCDDisplay:
         # {text, pos, line} 또는 None. 워커 스레드에서만 접근.
         self._marquee = None
         self._tick = 0.4  # 스크롤 간격(초) — 큐가 비었을 때 한 칸 이동
+        # 직전 버퍼 텍스트 — 동일 내용 재요청을 무시해(큐 비움) 전광판 스크롤을 허용한다.
+        self._last_buffer = None
 
         # 비동기 I2C 쓰기 큐
         self._queue = queue.Queue(maxsize=4)
@@ -51,18 +53,26 @@ class LCDDisplay:
 
     # ── 공개 API: 모두 큐에 작업 넣고 즉시 반환 ────────────────────
     def clear(self):
+        self._last_buffer = None
         self._enqueue(self._clear_sync)
 
     def write_line(self, line_num, text):
         self._enqueue(lambda: self._write_line_sync(line_num, text))
 
     def show_recognition(self, word, confidence):
+        self._last_buffer = None  # 인식 표시가 화면을 덮으므로 다음 버퍼는 다시 그린다
         self._enqueue(lambda: self._show_recognition_sync(word, confidence))
 
     def show_buffer(self, buffer_preview):
+        # 동일 버퍼의 매-프레임 재요청은 큐를 채워 전광판 스크롤을 막는다(_scroll_tick은
+        # 큐가 빌 때만 동작). 내용이 바뀔 때만 큐에 넣어 그 사이 워커가 스크롤하게 한다.
+        if buffer_preview == self._last_buffer:
+            return
+        self._last_buffer = buffer_preview
         self._enqueue(lambda: self._show_buffer_sync(buffer_preview))
 
     def show_sentence(self, sentence):
+        self._last_buffer = None
         self._enqueue(lambda: self._show_sentence_sync(sentence))
 
     def show_persona(self, label):
@@ -143,11 +153,18 @@ class LCDDisplay:
         self._write_line_sync(3, "")
 
     def _show_buffer_sync(self, buffer_preview):
-        self._marquee = None
         self._write_line_sync(0, self._line0("Word Buffer"))
-        self._write_line_sync(1, buffer_preview[:LCD_NUM_COLS])
         self._write_line_sync(2, "")
         self._write_line_sync(3, " Press DONE button")
+        if len(buffer_preview) <= LCD_NUM_COLS:
+            # 한 줄에 들어가면 정적 표시
+            self._marquee = None
+            self._write_line_sync(1, buffer_preview)
+        else:
+            # 길면 전광판 스크롤 — 동일 버퍼 재요청을 무시(show_buffer)하므로 큐가 비고,
+            # 워커가 _scroll_tick으로 좌로 흘려 누적 단어 전체를 보이게 한다.
+            self._marquee = {"text": buffer_preview + "    ", "pos": 0, "line": 1}
+            self._scroll_tick()  # 첫 프레임 즉시 표시
 
     def _show_sentence_sync(self, sentence):
         self._write_line_sync(0, self._line0("Generated"))
