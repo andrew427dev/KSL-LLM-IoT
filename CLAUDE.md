@@ -75,7 +75,7 @@
 
 ### 2.1 하드웨어/환경 분기
 - `src/main.py:27-34`처럼 `RPi.GPIO` 임포트는 **try/except로 감싸 PC 개발이 가능**해야 한다. 이 규약을 깨지 말 것.
-- 카메라는 OpenCV → rpicam-vid 서브프로세스 → picamera2 순서로 자동 폴백한다(`CameraReader`). RPi에서는 picamera2가 `python3-libcamera` ABI 제약으로 불가해 **rpicam-vid가 실질 백엔드**다(HANDOFF 2-E·2-F). 새 카메라 백엔드 추가 시 같은 패턴 유지.
+- 카메라는 OpenCV → rpicam-vid 서브프로세스 → picamera2 순서로 자동 폴백한다(`CameraReader`). RPi에서는 picamera2가 `python3-libcamera` ABI 제약으로 불가해 **rpicam-vid가 실질 백엔드**다. 새 카메라 백엔드 추가 시 같은 패턴 유지.
 
 ### 2.2 설정 우선순위
 - 하드코딩 금지. 모든 튜닝 값은 `config/settings.py` → `.env` 오버라이드 가능하게.

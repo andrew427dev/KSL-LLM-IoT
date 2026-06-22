@@ -18,7 +18,7 @@ PY="$VENV/bin/python"
 ART="${ART:-/mnt/data/ksl/ksl-artifacts}"
 mkdir -p "$ART"
 
-# 학습에 사용된 코드 버전을 로그에 남긴다 — 체인 pull 무음 실패(HANDOFF §2)
+# 학습에 사용된 코드 버전을 로그에 남긴다 — 체인 pull 무음 실패
 # 같은 사고에서 어떤 코드로 학습됐는지 역추적하는 근거.
 echo "=== 코드 버전: $(git -c safe.directory="$PWD" log --oneline -1 2>/dev/null || echo 'git 정보 없음') ==="
 
