@@ -280,7 +280,7 @@ This matrix allows incremental bring-up: hardware → camera → classifier → 
 | LLM response latency | ≤ 2 sec |
 | End-to-end pipeline delay | ≤ 4 sec |
 
-> **Actual (RPi 4B, develop):** on-device inference is ~6.4 FPS — MediaPipe hand detection is the bottleneck, mitigated by 1-second time-resampling so the recognition window matches the 30 FPS training distribution (see HANDOFF §1.4). The ≥20 FPS target is **not met** and is addressed in Future Work. Recognition accuracy and end-to-end latency are reported in the final report.
+> **Actual (RPi 4B, develop):** on-device inference is ~6.4 FPS — MediaPipe hand detection is the bottleneck, mitigated by 1-second time-resampling so the recognition window matches the 30 FPS training distribution. The ≥20 FPS target is **not met** and is addressed in Future Work. Recognition accuracy and end-to-end latency are reported in the final report.
 
 ---
 

@@ -5,7 +5,7 @@ MediaPipe Hands로 양손(좌·우)을 동시에 추출한다.
 출력: 한 프레임당 131차원 벡터 (src/feature_format.py 레이아웃 참조)
     [LEFT_63 | RIGHT_63 | wrist_vec_3 | presence_2]
 MediaPipe 정규화 좌표는 비등방(x÷너비, y÷높이)이므로 (w,h,w) 스케일로
-등방 복원 후 조립한다 (HANDOFF §1.6 G6 — 학습 데이터와 기하 정합).
+등방 복원 후 조립한다 (학습 데이터와 기하 정합).
 각 손은 손목(landmark 0) 상대좌표를 intra-hand scale(‖landmark9−landmark0‖)로
 나눠 정규화한다. 미감지 손은 zero + presence=0. 양손 모두 미감지면 None.
 
@@ -74,7 +74,7 @@ class HandTracker:
         미터 좌표)와 기하가 어긋난다. (w, h, w) 스케일로 픽셀 단위 등방
         좌표로 복원한다 (MediaPipe z는 x와 동일 스케일 — w 적용).
         None이면 입력을 이미 등방인 좌표로 간주해 보정하지 않는다.
-        (PR #9 리뷰 #1, HANDOFF §1.6 G6)
+        (PR #9 리뷰 #1)
         """
         if not result.multi_hand_landmarks:
             return None

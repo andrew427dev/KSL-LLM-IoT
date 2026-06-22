@@ -6,7 +6,7 @@ held-out 시연자 단위 train/test 분리 — PR #9 리뷰 #6.
 샘플 단위 랜덤 분할에서 train/test 양쪽에 들어가는 구조적 누출이 있었다
 — Test Accuracy가 1.0000으로 포화되어 일반화 측정이 불가능했다.
 시연자(REAL01~) 단위로 분리하면 held-out 시연자의 어떤 변형도 학습에
-노출되지 않아, HANDOFF §1.4의 판정 지표("held-out 시연자 정확도" — FPS
+노출되지 않아, 판정 지표("held-out 시연자 정확도" — FPS
 무관한 순수 일반화 측정)가 된다.
 
 파일명 규약 (그룹 식별의 근거):
@@ -14,7 +14,7 @@ held-out 시연자 단위 train/test 분리 — PR #9 리뷰 #6.
       예: NIA_SL_WORD1157_REAL01_F__w00.csv → 그룹 REAL01
   - model/augment.py: {원본 stem}__aug{k}.csv → 원본 그룹 상속
   - collect_data.py 등 REAL 패턴이 없는 파일 → 그룹 "local",
-      항상 train (HANDOFF §4.2 — 데모 화자 데이터는 학습에 포함)
+      항상 train (데모 화자 데이터는 학습에 포함)
 
 numpy 외 의존성 없음 (TF 무의존 — CI 실행 가능).
 """

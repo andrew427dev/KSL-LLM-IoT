@@ -8,7 +8,7 @@ button_input.py
 설계 — 폴링 방식:
 - RPi.GPIO의 add_event_detect는 최신 커널(Raspberry Pi OS Trixie)에서
   "Failed to add edge detection"으로 실패한다 (레거시 sysfs 이벤트와
-  libgpiod 커널의 충돌 — RPi 실기 확인, HANDOFF §2 참조).
+  libgpiod 커널의 충돌 — RPi 실기 확인).
 - 메인 루프(~30fps)가 매 프레임 poll()을 호출해 GPIO.input()으로
   하강 에지(HIGH→LOW)를 직접 검출한다. 루프 주기(~33ms)가 사람의
   버튼 누름 길이(>100ms)보다 충분히 짧아 놓침이 없다.

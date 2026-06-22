@@ -5,7 +5,7 @@
 #   bash scripts/chain_train.sh /mnt/data/ksl/aihub_full          # 즉시 학습
 #   bash scripts/chain_train.sh /mnt/data/ksl/aihub_full 1821500  # PID 종료 대기 후
 #
-# 배경 (HANDOFF §2 함정 2-U): deploy_code.sh의 tar 배포가 작업트리를 dirty로
+# 배경 (함정 2-U): deploy_code.sh의 tar 배포가 작업트리를 dirty로
 # 만들어 `git pull`이 무음 실패 → 구버전 코드로 학습되는 사고가 있었다.
 # 본 스크립트는 ① dirty 트리에 면역인 fetch+reset 동기화, ② 학습 직전
 # 코드 표지 검증, ③ set -e로 어느 단계든 실패 시 즉시 중단을 보장한다.

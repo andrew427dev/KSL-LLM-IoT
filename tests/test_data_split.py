@@ -2,10 +2,10 @@
 test_data_split.py
 held-out 시연자 분리(model/data_split.py) 검증 — PR #9 리뷰 #6.
 
-판정 지표(HANDOFF §1.4 "held-out 시연자 정확도")의 전제:
+판정 지표("held-out 시연자 정확도")의 전제:
   - test = held-out 시연자의 *원본*만
   - held-out 시연자의 증강본은 train·test 양쪽에서 제외 (누출 차단)
-  - "local" 그룹(collect_data.py 산출물)은 항상 train (§4.2 데모 화자 포함)
+  - "local" 그룹(collect_data.py 산출물)은 항상 train (데모 화자 포함)
 TF 무의존 — CI 실행 가능.
 """
 import os
